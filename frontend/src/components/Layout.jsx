@@ -9,6 +9,7 @@ import {
   Bot,
   Wifi,
   WifiOff,
+  LogOut,
 } from "lucide-react";
 
 const NAV_ITEMS = [
@@ -20,7 +21,7 @@ const NAV_ITEMS = [
   { to: "/assistant", icon: Bot, label: "AI Assistant" },
 ];
 
-export default function Layout() {
+export default function Layout({ onLogout }) {
   const { connected } = useWebSocket();
 
   return (
@@ -57,7 +58,7 @@ export default function Layout() {
         </nav>
 
         <div className="p-4 border-t border-gray-800">
-          <div className="flex items-center gap-2 text-xs">
+          <div className="flex items-center gap-2 text-xs mb-4">
             {connected ? (
               <>
                 <Wifi size={14} className="text-greenhouse-400" />
@@ -70,6 +71,13 @@ export default function Layout() {
               </>
             )}
           </div>
+          <button 
+            onClick={onLogout}
+            className="flex items-center gap-3 w-full px-3 py-2 text-sm font-medium text-red-400 hover:bg-red-400/10 rounded-lg transition-colors"
+          >
+            <LogOut size={18} />
+            Logout
+          </button>
         </div>
       </aside>
 
