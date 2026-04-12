@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { Routes, Route, Navigate } from "react-router-dom";
 import { onAuthStateChanged, signOut } from "firebase/auth";
-import { auth } from "./firebase/config";
+import { auth } from "../../backend/firebaseConfig";
 import Layout from "./components/Layout";
 import OverviewPage from "./pages/OverviewPage";
 import SensorsPage from "./pages/SensorsPage";
