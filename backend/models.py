@@ -1,7 +1,13 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 from typing import Optional, Dict, List
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 from enum import Enum
+
+# Kuala Lumpur Time (UTC+8)
+KL_TZ = timezone(timedelta(hours=8))
+
+def get_now():
+    return datetime.now(KL_TZ)
 
 
 # ── Sensor Types ──
@@ -29,13 +35,16 @@ class ZoneType(str, Enum):
 # ── Sensor Reading ──
 
 class SensorReading(BaseModel):
+    model_config = ConfigDict(extra='allow')
+
     sensor_id: str
     sensor_type: SensorType
     zone_id: str
     value: float
     unit: str
-    timestamp: datetime = Field(default_factory=datetime.utcnow)
+    timestamp: datetime = Field(default_factory=get_now)
     quality: float = Field(default=1.0, ge=0.0, le=1.0)
+    uid: Optional[str] = None
 
 
 class SensorBatch(BaseModel):
@@ -66,7 +75,7 @@ class Actuator(BaseModel):
     zone_id: str
     state: ActuatorState = ActuatorState.OFF
     current_value: float = 0.0
-    last_changed: datetime = Field(default_factory=datetime.utcnow)
+    last_changed: datetime = Field(default_factory=get_now)
 
 
 class Zone(BaseModel):

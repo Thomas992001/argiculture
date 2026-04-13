@@ -84,4 +84,9 @@ export const api = {
   setActiveCrop: (cropName) =>
     fetchJSON(`/advisor/crop/${cropName}`, { method: "POST" }),
   getVpdInfo: () => fetchJSON("/advisor/vpd"),
+  bindSimulator: (uid) =>
+    fetchJSON("/simulator/bind", {
+      method: "POST",
+      body: JSON.stringify({ uid }),
+    }),
 };

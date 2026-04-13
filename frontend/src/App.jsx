@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { Routes, Route, Navigate } from "react-router-dom";
 import { onAuthStateChanged, signOut } from "firebase/auth";
 import { auth } from "../../backend/firebaseConfig";
+import { api } from "./api/client";
 import Layout from "./components/Layout";
 import OverviewPage from "./pages/OverviewPage";
 import SensorsPage from "./pages/SensorsPage";
@@ -19,6 +20,11 @@ export default function App() {
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
       setIsAuthenticated(!!user);
+      if (user) {
+        api.bindSimulator(user.uid)
+          .then(() => console.log("Backend bound to UID:", user.uid))
+          .catch(err => console.error("Binding error:", err));
+      }
       setLoading(false);
     });
     return () => unsubscribe();

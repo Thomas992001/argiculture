@@ -138,6 +138,16 @@ app.include_router(analytics.router)
 app.include_router(advisor.router)
 
 
+@app.post("/api/simulator/bind")
+async def bind_simulator(data: dict):
+    """Link the local simulator to a specific Firebase UID."""
+    uid = data.get("uid")
+    if uid:
+        tsdb.set_active_uid(uid)
+        return {"status": "bound", "uid": uid}
+    return {"status": "error", "message": "No UID provided"}
+
+
 @app.get("/api/status", response_model=SystemStatus)
 async def get_system_status():
     simulator = app_state.get("simulator")

@@ -26,6 +26,9 @@ class Settings(BaseSettings):
     gemini_api_key: str = ""
     gemini_model: str = "gemini-2.5-flash"
 
+    # Firebase
+    firebase_target_uid: str = "ZLwjf4x1vBPkcEHc015OhelwwHo1"
+
     class Config:
         env_file = ".env"
         env_file_encoding = "utf-8"
