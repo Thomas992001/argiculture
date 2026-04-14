@@ -21,7 +21,6 @@ const ACTUATOR_CONFIG = {
   valve_irrigation: { icon: Droplets, label: "Irrigation Valve", color: "teal" },
   heater_main: { icon: Flame, label: "Main Heater", color: "red" },
   light_supplemental: { icon: Sun, label: "Supplemental Light", color: "yellow" },
-  co2_injector: { icon: Wind, label: "CO₂ Injector", color: "green" },
 };
 
 function ActuatorSwitch({ actuator, onToggle }) {

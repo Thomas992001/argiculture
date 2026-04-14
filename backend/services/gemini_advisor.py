@@ -84,10 +84,10 @@ def _build_sensor_context() -> str:
         zone_map[zone_id].append(reading)
 
     zone_labels = {
-        "zone_air": "Greenhouse Air Climate",
-        "zone_bed": "Substrate Grow Bed",
-        "zone_nft": "Hydroponic NFT Channels",
-        "zone_reservoir": "Water Reservoir",
+        "zone_air": "Greenhouse Condition",
+        "zone_bed_a": "Substrate A",
+        "zone_bed_b": "Substrate B",
+        "zone_bed_c": "Substrate C",
     }
 
     for zone_id, readings in zone_map.items():
@@ -265,6 +265,7 @@ class GeminiAdvisor:
         try:
             context = _build_sensor_context()
 
+            recent_block = ""
             history_text = ""
             recent = list(self._conversation_history)[-6:]
             for entry in recent:
@@ -273,7 +274,7 @@ class GeminiAdvisor:
 
             enriched_prompt = (
                 f"{context}\n\n---\n\n"
-                f"{('## Recent Conversation\\n' + history_text + '---\\n\\n') if history_text else ''}"
+                f"{recent_block}"
                 f"**User Question**: {user_message}\n\n"
                 f"Respond as GreenMind. Use the live sensor data above to give specific, "
                 f"data-driven advice. Reference actual values."
@@ -312,9 +313,10 @@ class GeminiAdvisor:
         stats_lines = ["## 24-Hour Statistics Summary"]
         for zone, sensor in [
             ("zone_air", "temperature"), ("zone_air", "humidity"),
-            ("zone_air", "co2"), ("zone_bed", "soil_moisture"),
-            ("zone_nft", "ph"), ("zone_nft", "ec"),
-            ("zone_reservoir", "water_level"),
+            ("zone_air", "light_intensity"),
+            ("zone_bed_a", "soil_temperature"), ("zone_bed_a", "soil_ph"), ("zone_bed_a", "soil_moisture"),
+            ("zone_bed_b", "soil_temperature"), ("zone_bed_b", "soil_ph"), ("zone_bed_b", "soil_moisture"),
+            ("zone_bed_c", "soil_temperature"), ("zone_bed_c", "soil_ph"), ("zone_bed_c", "soil_moisture"),
         ]:
             stats_lines.append(f"- {zone}/{sensor}: {_build_history_context(zone, sensor, 200)}")
 

@@ -179,8 +179,6 @@ class AIAdvisor:
         insights.extend(self._analyze_climate(readings, crop))
         insights.extend(self._analyze_vpd(readings, crop))
         insights.extend(self._analyze_irrigation(readings, crop))
-        insights.extend(self._analyze_hydroponics(readings, crop))
-        insights.extend(self._analyze_reservoir(readings))
         insights.extend(self._analyze_efficiency(readings))
 
         insights.sort(key=lambda i: {
@@ -193,7 +191,6 @@ class AIAdvisor:
         results = []
         temp = readings.get("zone_air:temperature")
         rh = readings.get("zone_air:humidity")
-        co2 = readings.get("zone_air:co2")
         light = readings.get("zone_air:light_intensity")
 
         if temp is not None:
@@ -248,25 +245,6 @@ class AIAdvisor:
                     priority=InsightPriority.MEDIUM, category="climate",
                     action="Use misting or wet pads. Reduce ventilation rate temporarily.",
                     icon="droplets", metric_name="humidity", metric_value=rh,
-                ))
-
-        if co2 is not None:
-            if co2 < 400:
-                results.append(Insight(
-                    title="CO₂ Very Low",
-                    message=f"CO₂ is {co2:.0f} ppm — below ambient levels. Photosynthesis is limited. "
-                            f"Plants cannot grow efficiently below 350 ppm.",
-                    priority=InsightPriority.HIGH, category="climate",
-                    action="Increase ventilation to bring in fresh air, or activate CO₂ injection.",
-                    icon="wind", metric_name="co2", metric_value=co2,
-                ))
-            elif co2 > 1200:
-                results.append(Insight(
-                    title="CO₂ Elevated",
-                    message=f"CO₂ is {co2:.0f} ppm — above enrichment target. Most greenhouse crops plateau at 800-1200 ppm.",
-                    priority=InsightPriority.LOW, category="climate",
-                    action="Consider reducing CO₂ injection to save cost. Check for CO₂ leaks.",
-                    icon="wind", metric_name="co2", metric_value=co2,
                 ))
 
         if light is not None:
@@ -324,132 +302,50 @@ class AIAdvisor:
 
     def _analyze_irrigation(self, readings: Dict, crop: CropProfile) -> List[Insight]:
         results = []
-        moisture = readings.get("zone_bed:soil_moisture")
+        bed_zones = [
+            ("zone_bed_a", "Substrate A"),
+            ("zone_bed_b", "Substrate B"),
+            ("zone_bed_c", "Substrate C"),
+        ]
 
-        if moisture is None:
-            return results
+        for zone_id, label in bed_zones:
+            moisture = readings.get(f"{zone_id}:soil_moisture")
+            if moisture is None:
+                continue
 
-        trend = self._get_trend_for("zone_bed", "soil_moisture")
+            trend = self._get_trend_for(zone_id, "soil_moisture")
 
-        if moisture < 25:
-            results.append(Insight(
-                title="Soil Moisture Critically Low",
-                message=f"Moisture is {moisture:.0f}% — plants are at risk of wilting. Trend: {trend}.",
-                priority=InsightPriority.CRITICAL, category="irrigation",
-                action="Start irrigation immediately. Check valve and pump operation.",
-                icon="droplets", metric_name="soil_moisture", metric_value=moisture,
-            ))
-        elif moisture < 35:
-            results.append(Insight(
-                title="Soil Moisture Getting Low",
-                message=f"Moisture is {moisture:.0f}% and {trend}. Schedule irrigation soon to avoid stress.",
-                priority=InsightPriority.MEDIUM, category="irrigation",
-                action="Open irrigation valve within the next 15-30 minutes.",
-                icon="droplets", metric_name="soil_moisture", metric_value=moisture,
-            ))
-        elif moisture > 75:
-            results.append(Insight(
-                title="Soil Overwatered",
-                message=f"Moisture is {moisture:.0f}%. Oversaturation reduces oxygen at roots, risking root rot.",
-                priority=InsightPriority.MEDIUM, category="irrigation",
-                action="Stop irrigation. Ensure drainage is adequate. Increase ventilation.",
-                icon="droplets", metric_name="soil_moisture", metric_value=moisture,
-            ))
-        else:
-            if trend == "falling" and moisture < 50:
+            if moisture < 25:
                 results.append(Insight(
-                    title="Moisture Declining — Plan Irrigation",
-                    message=f"Moisture is {moisture:.0f}% and falling. At current rate, irrigation will be needed soon.",
+                    title=f"{label} — Moisture Critically Low",
+                    message=f"{label} moisture is {moisture:.0f}% — plants are at risk of wilting. Trend: {trend}.",
+                    priority=InsightPriority.CRITICAL, category="irrigation",
+                    action="Start irrigation immediately. Check valve and pump operation.",
+                    icon="droplets", metric_name="soil_moisture", metric_value=moisture,
+                ))
+            elif moisture < 35:
+                results.append(Insight(
+                    title=f"{label} — Moisture Getting Low",
+                    message=f"{label} moisture is {moisture:.0f}% and {trend}. Schedule irrigation soon.",
+                    priority=InsightPriority.MEDIUM, category="irrigation",
+                    action="Open irrigation valve within the next 15-30 minutes.",
+                    icon="droplets", metric_name="soil_moisture", metric_value=moisture,
+                ))
+            elif moisture > 75:
+                results.append(Insight(
+                    title=f"{label} — Overwatered",
+                    message=f"{label} moisture is {moisture:.0f}%. Oversaturation reduces oxygen at roots.",
+                    priority=InsightPriority.MEDIUM, category="irrigation",
+                    action="Stop irrigation. Ensure drainage is adequate.",
+                    icon="droplets", metric_name="soil_moisture", metric_value=moisture,
+                ))
+            elif trend == "falling" and moisture < 50:
+                results.append(Insight(
+                    title=f"{label} — Moisture Declining",
+                    message=f"{label} moisture is {moisture:.0f}% and falling. Irrigation will be needed soon.",
                     priority=InsightPriority.LOW, category="irrigation",
                     action="Prepare to irrigate within the next hour.",
                     icon="droplets", metric_name="soil_moisture", metric_value=moisture,
-                ))
-
-        return results
-
-    def _analyze_hydroponics(self, readings: Dict, crop: CropProfile) -> List[Insight]:
-        results = []
-        ph = readings.get("zone_nft:ph")
-        ec = readings.get("zone_nft:ec")
-        water_temp = readings.get("zone_nft:water_temperature")
-
-        if ph is not None:
-            if ph < crop.ph_min:
-                results.append(Insight(
-                    title="Nutrient Solution pH Too Low",
-                    message=f"pH is {ph:.1f} — below {crop.ph_min}. Acidic conditions lock out calcium and magnesium.",
-                    priority=InsightPriority.HIGH, category="hydroponics",
-                    action="Add pH Up solution gradually. Check for acid dosing malfunction.",
-                    icon="beaker", metric_name="ph", metric_value=ph,
-                ))
-            elif ph > crop.ph_max:
-                results.append(Insight(
-                    title="Nutrient Solution pH Too High",
-                    message=f"pH is {ph:.1f} — above {crop.ph_max}. Alkaline conditions lock out iron and manganese.",
-                    priority=InsightPriority.HIGH, category="hydroponics",
-                    action="Add pH Down solution gradually. Check water source alkalinity.",
-                    icon="beaker", metric_name="ph", metric_value=ph,
-                ))
-
-        if ec is not None:
-            if ec < crop.ec_min:
-                results.append(Insight(
-                    title="EC Too Low — Underfeeding",
-                    message=f"EC is {ec:.2f} mS/cm, below {crop.ec_min}. Plants may show deficiency symptoms (yellowing).",
-                    priority=InsightPriority.MEDIUM, category="hydroponics",
-                    action="Add concentrated nutrient stock. Check dosing pump.",
-                    icon="gauge", metric_name="ec", metric_value=ec,
-                ))
-            elif ec > crop.ec_max:
-                results.append(Insight(
-                    title="EC Too High — Risk of Salt Burn",
-                    message=f"EC is {ec:.2f} mS/cm, above {crop.ec_max}. Excess salts can damage roots and cause tip burn.",
-                    priority=InsightPriority.MEDIUM, category="hydroponics",
-                    action="Dilute with fresh water. Reduce nutrient dosing rate.",
-                    icon="gauge", metric_name="ec", metric_value=ec,
-                ))
-
-        if water_temp is not None:
-            if water_temp > 28:
-                results.append(Insight(
-                    title="Water Temperature Too Warm",
-                    message=f"Water is {water_temp:.1f}°C. Above 28°C, dissolved oxygen drops and root diseases (Pythium) thrive.",
-                    priority=InsightPriority.HIGH, category="hydroponics",
-                    action="Add a chiller or shade the reservoir. Add beneficial microbes.",
-                    icon="thermometer", metric_name="water_temperature", metric_value=water_temp,
-                ))
-            elif water_temp < 16:
-                results.append(Insight(
-                    title="Water Temperature Too Cold",
-                    message=f"Water is {water_temp:.1f}°C. Cold roots slow nutrient uptake and stunt growth.",
-                    priority=InsightPriority.MEDIUM, category="hydroponics",
-                    action="Add a submersible heater. Insulate pipes and reservoir.",
-                    icon="thermometer", metric_name="water_temperature", metric_value=water_temp,
-                ))
-
-        return results
-
-    def _analyze_reservoir(self, readings: Dict) -> List[Insight]:
-        results = []
-        level = readings.get("zone_reservoir:water_level")
-
-        if level is not None:
-            trend = self._get_trend_for("zone_reservoir", "water_level")
-            if level < 20:
-                results.append(Insight(
-                    title="Reservoir Level Critical",
-                    message=f"Water level is {level:.0f} cm — pump may run dry, causing damage.",
-                    priority=InsightPriority.CRITICAL, category="reservoir",
-                    action="Refill reservoir immediately. Check for leaks.",
-                    icon="waves", metric_name="water_level", metric_value=level,
-                ))
-            elif level < 35 and trend == "falling":
-                results.append(Insight(
-                    title="Reservoir Level Dropping",
-                    message=f"Water at {level:.0f} cm and declining. Plan a refill to maintain supply.",
-                    priority=InsightPriority.MEDIUM, category="reservoir",
-                    action="Schedule reservoir refill within the next few hours.",
-                    icon="waves", metric_name="water_level", metric_value=level,
                 ))
 
         return results
@@ -500,10 +396,7 @@ class AIAdvisor:
 
         temp = readings.get("zone_air:temperature")
         rh = readings.get("zone_air:humidity")
-        co2 = readings.get("zone_air:co2")
-        moisture = readings.get("zone_bed:soil_moisture")
-        nft_ph = readings.get("zone_nft:ph")
-        water_level = readings.get("zone_reservoir:water_level")
+        light = readings.get("zone_air:light_intensity")
 
         parts = []
         parts.append(f"Current crop profile: {crop.name}.")
@@ -516,20 +409,23 @@ class AIAdvisor:
                 f"VPD is {vpd:.2f} kPa."
             )
 
-        if co2 is not None:
-            co2_status = "adequate" if 400 <= co2 <= 1200 else ("low" if co2 < 400 else "elevated")
-            parts.append(f"CO₂ level is {co2:.0f} ppm ({co2_status}).")
+        if light is not None:
+            parts.append(f"Light intensity is {light:.0f} lux.")
 
-        if moisture is not None:
-            m_trend = self._get_trend_for("zone_bed", "soil_moisture")
-            parts.append(f"Substrate moisture is {moisture:.0f}% and {m_trend}.")
-
-        if nft_ph is not None:
-            ph_ok = crop.ph_min <= nft_ph <= crop.ph_max
-            parts.append(f"Hydroponic pH is {nft_ph:.1f} ({'within range' if ph_ok else 'out of range'}).")
-
-        if water_level is not None:
-            parts.append(f"Reservoir level is {water_level:.0f} cm.")
+        for zone_id, label in [("zone_bed_a", "Substrate A"), ("zone_bed_b", "Substrate B"), ("zone_bed_c", "Substrate C")]:
+            moisture = readings.get(f"{zone_id}:soil_moisture")
+            soil_temp = readings.get(f"{zone_id}:soil_temperature")
+            soil_ph = readings.get(f"{zone_id}:soil_ph")
+            bed_parts = []
+            if moisture is not None:
+                m_trend = self._get_trend_for(zone_id, "soil_moisture")
+                bed_parts.append(f"moisture {moisture:.0f}% ({m_trend})")
+            if soil_temp is not None:
+                bed_parts.append(f"temp {soil_temp:.1f}°C")
+            if soil_ph is not None:
+                bed_parts.append(f"pH {soil_ph:.1f}")
+            if bed_parts:
+                parts.append(f"{label}: {', '.join(bed_parts)}.")
 
         alerts = twin_state.get_alerts()
         if alerts:
@@ -632,57 +528,36 @@ class AIAdvisor:
             return ChatResponse(answer="Humidity data is not available yet.")
 
         if any(w in q for w in ["ph", "acid", "alkaline", "nutrient lock"]):
-            nft_ph = readings.get("zone_nft:ph")
-            res_ph = readings.get("zone_reservoir:ph")
             parts = []
-            if nft_ph is not None:
-                status = "in range" if crop.ph_min <= nft_ph <= crop.ph_max else "out of range"
+            for zone_id, label in [("zone_bed_a", "Substrate A"), ("zone_bed_b", "Substrate B"), ("zone_bed_c", "Substrate C")]:
+                soil_ph = readings.get(f"{zone_id}:soil_ph")
+                if soil_ph is not None:
+                    status = "in range" if crop.ph_min <= soil_ph <= crop.ph_max else "out of range"
+                    parts.append(f"**{label} Soil pH**: {soil_ph:.1f} — {status}")
+            if parts:
                 parts.append(
-                    f"**NFT Channel pH**: {nft_ph:.1f} — {status}\n"
-                    f"- Ideal for {crop.name}: {crop.ph_min}-{crop.ph_max}\n"
+                    f"\n- Ideal for {crop.name}: {crop.ph_min}-{crop.ph_max}\n"
+                    f"**Why pH matters**: pH controls which nutrients are available to roots. "
+                    f"Outside the ideal range, certain elements 'lock out' even if present in the substrate."
                 )
-            if res_ph is not None:
-                parts.append(f"**Reservoir pH**: {res_ph:.1f}\n")
-            parts.append(
-                f"\n**Why pH matters**: pH controls which nutrients dissolve and are available to roots. "
-                f"Outside the ideal range, certain elements 'lock out' even if present in solution."
-            )
-            return ChatResponse(
-                answer="\n".join(parts) if parts else "pH data not available yet.",
-                data_points={"nft_ph": nft_ph, "reservoir_ph": res_ph},
-            )
-
-        if any(w in q for w in ["ec", "electrical conductivity", "nutrient strength", "feed"]):
-            nft_ec = readings.get("zone_nft:ec")
-            bed_ec = readings.get("zone_bed:ec")
-            parts = []
-            if nft_ec is not None:
-                status = "in range" if crop.ec_min <= nft_ec <= crop.ec_max else ("too low" if nft_ec < crop.ec_min else "too high")
-                parts.append(
-                    f"**NFT EC**: {nft_ec:.2f} mS/cm — {status}\n"
-                    f"- Ideal for {crop.name}: {crop.ec_min}-{crop.ec_max} mS/cm\n"
-                )
-            if bed_ec is not None:
-                parts.append(f"**Substrate EC**: {bed_ec:.2f} mS/cm\n")
-            parts.append(
-                f"\n**What EC tells you**: EC measures total dissolved salts — a proxy for nutrient concentration. "
-                f"Too low = underfeeding. Too high = salt burn and root damage."
-            )
-            return ChatResponse(answer="\n".join(parts))
+            return ChatResponse(answer="\n".join(parts) if parts else "Soil pH data not available yet.")
 
         if any(w in q for w in ["water", "irrigat", "when to water", "should i water", "soil moisture"]):
-            moisture = readings.get("zone_bed:soil_moisture")
-            if moisture is not None:
-                trend = self._get_trend_for("zone_bed", "soil_moisture")
-                if moisture < 30:
-                    answer = f"**Yes, irrigate now!** Soil moisture is {moisture:.0f}% and {trend}. Plants need water immediately."
-                elif moisture < 45 and trend == "falling":
-                    answer = f"**Plan irrigation soon.** Moisture is {moisture:.0f}% and falling. Water within the next 30 minutes."
-                elif moisture > 70:
-                    answer = f"**No irrigation needed.** Moisture is {moisture:.0f}%. Soil is well-watered, avoid overwatering."
-                else:
-                    answer = f"**Moisture is adequate** at {moisture:.0f}% ({trend}). No immediate irrigation needed."
-                return ChatResponse(answer=answer, data_points={"soil_moisture": moisture})
+            parts = []
+            for zone_id, label in [("zone_bed_a", "Substrate A"), ("zone_bed_b", "Substrate B"), ("zone_bed_c", "Substrate C")]:
+                moisture = readings.get(f"{zone_id}:soil_moisture")
+                if moisture is not None:
+                    trend = self._get_trend_for(zone_id, "soil_moisture")
+                    if moisture < 30:
+                        parts.append(f"**{label}**: {moisture:.0f}% ({trend}) — **irrigate now!**")
+                    elif moisture < 45 and trend == "falling":
+                        parts.append(f"**{label}**: {moisture:.0f}% ({trend}) — plan irrigation soon")
+                    elif moisture > 70:
+                        parts.append(f"**{label}**: {moisture:.0f}% ({trend}) — well-watered, avoid overwatering")
+                    else:
+                        parts.append(f"**{label}**: {moisture:.0f}% ({trend}) — adequate")
+            if parts:
+                return ChatResponse(answer="**Soil Moisture Status:**\n\n" + "\n".join(parts))
             return ChatResponse(answer="Soil moisture data not available yet.")
 
         if any(w in q for w in ["crop", "grow", "plant", "what can i"]):
@@ -742,38 +617,26 @@ class AIAdvisor:
                 lines.append(f"{i}. **{ins.title}** — {ins.action}")
             return ChatResponse(answer="\n".join(lines), insights=actionable[:5])
 
-        if any(w in q for w in ["reservoir", "tank", "water level"]):
-            level = readings.get("zone_reservoir:water_level")
-            res_ph = readings.get("zone_reservoir:ph")
-            res_ec = readings.get("zone_reservoir:ec")
-            res_temp = readings.get("zone_reservoir:water_temperature")
-            parts = [f"**Reservoir Status:**\n"]
-            if level is not None:
-                trend = self._get_trend_for("zone_reservoir", "water_level")
-                parts.append(f"- Water level: {level:.0f} cm ({trend})")
-            if res_ph is not None:
-                parts.append(f"- pH: {res_ph:.1f}")
-            if res_ec is not None:
-                parts.append(f"- EC: {res_ec:.2f} mS/cm")
-            if res_temp is not None:
-                parts.append(f"- Temperature: {res_temp:.1f}°C")
-            return ChatResponse(answer="\n".join(parts))
-
-        if any(w in q for w in ["co2", "carbon", "ventilat"]):
-            co2 = readings.get("zone_air:co2")
-            if co2 is not None:
-                if co2 < 400:
-                    advice = "CO₂ is below ambient. Open vents or inject CO₂ to boost photosynthesis."
-                elif co2 > 1000:
-                    advice = "CO₂ is elevated. Good for enrichment, but check it doesn't exceed 1500 ppm."
+        if any(w in q for w in ["light", "lux", "bright", "dark"]):
+            light = readings.get("zone_air:light_intensity")
+            if light is not None:
+                trend = self._get_trend_for("zone_air", "light_intensity")
+                if light < 500:
+                    status = "very low"
+                elif light < 5000:
+                    status = "low"
+                elif light > 50000:
+                    status = "very high"
                 else:
-                    advice = "CO₂ is at a healthy level for plant growth."
+                    status = "adequate"
                 return ChatResponse(
-                    answer=f"**CO₂ Level**: {co2:.0f} ppm\n\n{advice}\n\nPlants use CO₂ for photosynthesis. "
-                           f"Enriching to 800-1200 ppm can boost yields 20-30% in a sealed greenhouse.",
-                    data_points={"co2": co2},
+                    answer=f"**Light Intensity**: {light:.0f} lux — {status}\n\n"
+                           f"- Trend: {trend}\n"
+                           f"- DLI target for {crop.name}: {crop.light_dli} mol/m²/day\n"
+                           f"- Recommended photoperiod: {crop.light_hours} hours",
+                    data_points={"light_intensity": light},
                 )
-            return ChatResponse(answer="CO₂ data not available yet.")
+            return ChatResponse(answer="Light data not available yet.")
 
         # Default fallback
         summary = self.generate_summary()

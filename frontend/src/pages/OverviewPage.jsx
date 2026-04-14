@@ -6,29 +6,35 @@ import {
   AlertTriangle,
   Server,
   Sparkles,
+  Sun,
 } from "lucide-react";
 import { api } from "../api/client";
-// import { useWebSocket } from "../hooks/useWebSocket";
 import { useRTDBData } from "../hooks/useRTDBData";
 import SensorCard from "../components/SensorCard";
 import RealtimeChart from "../components/RealtimeChart";
 import AlertPanel from "../components/AlertPanel";
 import { AiSummaryBanner, AiInsightPanel } from "../components/AiInsightCards";
 
-const ZONE_LABELS = {
-  zone_air: "Greenhouse Air",
-  zone_bed: "Substrate Bed",
-  zone_nft: "Hydroponic NFT",
-  zone_reservoir: "Reservoir",
-};
+const BED_ZONES = [
+  { value: "zone_bed_a", label: "Substrate A", color: "#22c55e" },
+  { value: "zone_bed_b", label: "Substrate B", color: "#3b82f6" },
+  { value: "zone_bed_c", label: "Substrate C", color: "#f59e0b" },
+];
+
+const ALLOWED_ZONES = new Set([
+  "zone_air",
+  "zone_bed_a",
+  "zone_bed_b",
+  "zone_bed_c",
+]);
 
 export default function OverviewPage() {
   const [sensorData, setSensorData] = useState({});
   const [prevData, setPrevData] = useState({});
   const [alerts, setAlerts] = useState([]);
   const [status, setStatus] = useState(null);
-  const [history, setHistory] = useState([]);
-  // const { lastMessage } = useWebSocket();
+  const [airHistory, setAirHistory] = useState([]);
+  const [bedMoistureHistories, setBedMoistureHistories] = useState({});
   const { data: rtdbData } = useRTDBData();
 
   const fetchData = useCallback(async () => {
@@ -49,8 +55,18 @@ export default function OverviewPage() {
 
   const fetchHistory = useCallback(async () => {
     try {
-      const data = await api.getSensorHistory("zone_air", "temperature", 30);
-      setHistory(data);
+      const [airHist, ...bedHists] = await Promise.all([
+        api.getSensorHistory("zone_air", "temperature", 30),
+        ...BED_ZONES.map((bed) =>
+          api.getSensorHistory(bed.value, "soil_moisture", 30)
+        ),
+      ]);
+      setAirHistory(airHist);
+      const histories = {};
+      BED_ZONES.forEach((bed, i) => {
+        histories[bed.value] = bedHists[i];
+      });
+      setBedMoistureHistories(histories);
     } catch {
       // ignore
     }
@@ -66,35 +82,26 @@ export default function OverviewPage() {
     return () => clearInterval(interval);
   }, [fetchData, fetchHistory]);
 
-  // Use Firebase RTDB for real-time updates
   useEffect(() => {
     if (rtdbData && Object.keys(rtdbData).length > 0) {
       setPrevData(sensorData);
-      setSensorData(prev => ({ ...prev, ...rtdbData }));
+      setSensorData((prev) => ({ ...prev, ...rtdbData }));
     }
   }, [rtdbData]);
 
-  /* WebSocket listener commented out per user request
-  useEffect(() => {
-    if (lastMessage?.type === "sensor_update") {
-      setPrevData(sensorData);
-      const updated = { ...sensorData };
-      for (const r of lastMessage.readings) {
-        const key = `${r.zone_id}:${r.sensor_type}`;
-        updated[key] = r;
-      }
-      setSensorData(updated);
-    }
-  }, [lastMessage]);
-  */
+  const airReadings = Object.entries(sensorData)
+    .filter(([key]) => key.startsWith("zone_air:"))
+    .map(([key, reading]) => ({
+      key,
+      sensorType: key.split(":")[1],
+      ...reading,
+    }));
 
-  const sensorEntries = Object.entries(sensorData);
-  const groupedByZone = {};
-  for (const [key, reading] of sensorEntries) {
-    const zoneId = reading.zone_id || key.split(":")[0];
-    if (!groupedByZone[zoneId]) groupedByZone[zoneId] = [];
-    groupedByZone[zoneId].push({ key, ...reading });
-  }
+  const bedMoistureSeries = BED_ZONES.map((bed) => ({
+    label: bed.label,
+    data: bedMoistureHistories[bed.value] || [],
+    color: bed.color,
+  }));
 
   return (
     <div className="space-y-6">
@@ -161,11 +168,11 @@ export default function OverviewPage() {
       {/* AI Summary */}
       <AiSummaryBanner />
 
-      {/* Chart + AI Insights + Alerts */}
+      {/* Charts + AI Insights + Alerts */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-2 space-y-4">
           <RealtimeChart
-            data={history}
+            data={airHistory}
             sensorType="temperature"
             height={250}
             title="Air Temperature (Last 30 min)"
@@ -188,29 +195,77 @@ export default function OverviewPage() {
         </div>
       </div>
 
-      {/* Zone sensor grid */}
-      {Object.entries(groupedByZone).map(([zoneId, readings]) => (
-        <div key={zoneId}>
-          <h3 className="text-sm font-semibold text-gray-300 mb-3">
-            {ZONE_LABELS[zoneId] || zoneId}
-          </h3>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-            {readings.map((r) => {
-              const sType = r.sensor_type || r.key.split(":")[1];
-              const prevReading = prevData[r.key];
-              return (
-                <SensorCard
-                  key={r.key}
-                  sensorType={sType}
-                  value={r.value}
-                  prevValue={prevReading?.value}
-                  quality={r.quality}
-                />
-              );
-            })}
-          </div>
+      {/* Greenhouse Condition sensors */}
+      <div>
+        <h3 className="text-sm font-semibold text-gray-300 mb-3">
+          Greenhouse Condition
+        </h3>
+        <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+          {airReadings.map((r) => {
+            const prevReading = prevData[r.key];
+            return (
+              <SensorCard
+                key={r.key}
+                sensorType={r.sensorType}
+                value={r.value}
+                prevValue={prevReading?.value}
+                quality={r.quality}
+              />
+            );
+          })}
         </div>
-      ))}
+      </div>
+
+      {/* Substrate Bed sensors — all 3 beds */}
+      <div>
+        <h3 className="text-sm font-semibold text-gray-300 mb-3">
+          Substrate Bed
+        </h3>
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+          {BED_ZONES.map((bed) => {
+            const readings = Object.entries(sensorData)
+              .filter(([key]) => key.startsWith(`${bed.value}:`))
+              .map(([key, reading]) => ({
+                key,
+                sensorType: key.split(":")[1],
+                ...reading,
+              }));
+            return (
+              <div key={bed.value}>
+                <h4 className="text-xs font-medium text-gray-400 mb-2 flex items-center gap-2">
+                  <span
+                    className="w-2 h-2 rounded-full"
+                    style={{ backgroundColor: bed.color }}
+                  />
+                  {bed.label}
+                </h4>
+                <div className="space-y-2">
+                  {readings.map((r) => {
+                    const prevReading = prevData[r.key];
+                    return (
+                      <SensorCard
+                        key={r.key}
+                        sensorType={r.sensorType}
+                        value={r.value}
+                        prevValue={prevReading?.value}
+                        quality={r.quality}
+                      />
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Substrate Bed moisture chart — all 3 beds */}
+      <RealtimeChart
+        series={bedMoistureSeries}
+        sensorType="soil_moisture"
+        height={250}
+        title="Soil Moisture — Substrate A / B / C (Last 30 min)"
+      />
     </div>
   );
 }
@@ -234,7 +289,7 @@ function StatusCard({ icon: Icon, label, value, unit, color, bg }) {
 
 function getAvg(sensorData, sensorType) {
   const values = Object.entries(sensorData)
-    .filter(([key]) => key.includes(sensorType))
+    .filter(([key]) => key.endsWith(`:${sensorType}`))
     .map(([, r]) => r.value)
     .filter((v) => v != null);
   if (values.length === 0) return 0;

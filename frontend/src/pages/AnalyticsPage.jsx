@@ -4,12 +4,12 @@ import { api } from "../api/client";
 import ForecastChart from "../components/ForecastChart";
 
 const FORECAST_OPTIONS = [
-  { zone: "zone_air", sensor: "temperature", label: "Air Temperature Forecast" },
+  { zone: "zone_air", sensor: "temperature", label: "Temperature Forecast" },
   { zone: "zone_air", sensor: "humidity", label: "Humidity Forecast" },
-  { zone: "zone_air", sensor: "co2", label: "CO₂ Forecast" },
-  { zone: "zone_bed", sensor: "soil_moisture", label: "Soil Moisture Forecast" },
-  { zone: "zone_nft", sensor: "ph", label: "NFT pH Forecast" },
-  { zone: "zone_reservoir", sensor: "water_level", label: "Reservoir Level Forecast" },
+  { zone: "zone_air", sensor: "light_intensity", label: "Light Forecast" },
+  { zone: "zone_bed_a", sensor: "soil_temperature", label: "Soil Temperature Forecast" },
+  { zone: "zone_bed_a", sensor: "soil_ph", label: "Soil pH Value Forecast" },
+  { zone: "zone_bed_a", sensor: "soil_moisture", label: "Soil Moisture Forecast" },
 ];
 
 export default function AnalyticsPage() {

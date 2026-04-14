@@ -88,66 +88,6 @@ function PlantBed({ position, color, label }) {
   );
 }
 
-function NFTChannel({ position }) {
-  return (
-    <group position={position}>
-      <mesh position={[0, 0.15, 0]}>
-        <boxGeometry args={[3, 0.1, 0.4]} />
-        <meshStandardMaterial color="#f0f0f0" roughness={0.3} metalness={0.2} />
-      </mesh>
-      {/* Water inside */}
-      <mesh position={[0, 0.12, 0]}>
-        <boxGeometry args={[2.9, 0.06, 0.35]} />
-        <meshPhysicalMaterial
-          color="#2299cc"
-          transparent
-          opacity={0.6}
-          roughness={0.1}
-        />
-      </mesh>
-      {Array.from({ length: 5 }).map((_, i) => (
-        <mesh key={i} position={[-1.2 + i * 0.6, 0.35, 0]}>
-          <sphereGeometry args={[0.12, 8, 8]} />
-          <meshStandardMaterial color="#22c55e" roughness={0.7} />
-        </mesh>
-      ))}
-    </group>
-  );
-}
-
-function Reservoir({ position, waterLevel = 0.6 }) {
-  return (
-    <group position={position}>
-      <mesh position={[0, 0.4, 0]}>
-        <cylinderGeometry args={[0.5, 0.5, 0.8, 16]} />
-        <meshPhysicalMaterial
-          color="#666666"
-          transparent
-          opacity={0.4}
-          roughness={0.2}
-        />
-      </mesh>
-      <mesh position={[0, waterLevel * 0.4, 0]}>
-        <cylinderGeometry args={[0.45, 0.45, waterLevel * 0.7, 16]} />
-        <meshPhysicalMaterial
-          color="#1e90ff"
-          transparent
-          opacity={0.5}
-          roughness={0.1}
-        />
-      </mesh>
-      <Text
-        position={[0, 1, 0]}
-        fontSize={0.12}
-        color="#60a5fa"
-        anchorX="center"
-      >
-        Reservoir
-      </Text>
-    </group>
-  );
-}
-
 function SensorNode({ position, label, color = "#22c55e", value = "" }) {
   const ref = useRef();
 
@@ -223,10 +163,11 @@ function Fan({ position, isOn }) {
 function GreenhouseScene({ sensorData = {}, actuatorStates = {} }) {
   const temp = sensorData["zone_air:temperature"]?.value;
   const rh = sensorData["zone_air:humidity"]?.value;
-  const co2 = sensorData["zone_air:co2"]?.value;
-  const moisture = sensorData["zone_bed:soil_moisture"]?.value;
-  const nftPh = sensorData["zone_nft:ph"]?.value;
-  const waterLevel = sensorData["zone_reservoir:water_level"]?.value;
+  const light = sensorData["zone_air:light_intensity"]?.value;
+
+  const moistureA = sensorData["zone_bed_a:soil_moisture"]?.value;
+  const moistureB = sensorData["zone_bed_b:soil_moisture"]?.value;
+  const moistureC = sensorData["zone_bed_c:soil_moisture"]?.value;
 
   const fanOn = actuatorStates?.fan_exhaust === "on";
 
@@ -239,38 +180,36 @@ function GreenhouseScene({ sensorData = {}, actuatorStates = {} }) {
       <GreenhouseFrame />
 
       {/* Substrate beds */}
-      <PlantBed position={[-1.5, 0, -1.5]} color="#22c55e" label="Bed A" />
-      <PlantBed position={[-1.5, 0, 1.5]} color="#16a34a" label="Bed B" />
+      <PlantBed position={[-1.5, 0, -2]} color="#22c55e" label="Substrate A" />
+      <PlantBed position={[-1.5, 0, 0]} color="#16a34a" label="Substrate B" />
+      <PlantBed position={[-1.5, 0, 2]} color="#15803d" label="Substrate C" />
 
-      {/* NFT channels */}
-      <NFTChannel position={[2, 0.5, -1.2]} />
-      <NFTChannel position={[2, 0.5, 0]} />
-      <NFTChannel position={[2, 0.5, 1.2]} />
-
-      {/* Reservoir */}
-      <Reservoir
-        position={[3.2, 0, -2.2]}
-        waterLevel={waterLevel ? waterLevel / 100 : 0.6}
-      />
-
-      {/* Sensor nodes */}
+      {/* Greenhouse condition sensor */}
       <SensorNode
         position={[0, 2.5, 0]}
-        label="T/RH/CO₂"
+        label="T / RH / Light"
         color="#f87171"
         value={temp != null ? `${temp.toFixed(1)}°C` : ""}
       />
+
+      {/* Bed sensor nodes */}
       <SensorNode
-        position={[-1.5, 0.8, -1.5]}
-        label="Moisture"
-        color="#22d3ee"
-        value={moisture != null ? `${moisture.toFixed(0)}%` : ""}
+        position={[-1.5, 0.8, -2]}
+        label="Moisture A"
+        color="#22c55e"
+        value={moistureA != null ? `${moistureA.toFixed(0)}%` : ""}
       />
       <SensorNode
-        position={[2, 0.9, 0]}
-        label="pH/EC"
-        color="#4ade80"
-        value={nftPh != null ? `pH ${nftPh.toFixed(1)}` : ""}
+        position={[-1.5, 0.8, 0]}
+        label="Moisture B"
+        color="#3b82f6"
+        value={moistureB != null ? `${moistureB.toFixed(0)}%` : ""}
+      />
+      <SensorNode
+        position={[-1.5, 0.8, 2]}
+        label="Moisture C"
+        color="#f59e0b"
+        value={moistureC != null ? `${moistureC.toFixed(0)}%` : ""}
       />
 
       {/* Fan */}

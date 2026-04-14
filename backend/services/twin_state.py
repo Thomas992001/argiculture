@@ -55,18 +55,18 @@ class TwinStateManager:
 
     def _initialize_zones(self):
         zone_defs = [
-            ("zone_air", "Greenhouse Air", ZoneType.GREENHOUSE_AIR,
-             ["air_temp_1", "air_rh_1", "air_co2_1", "air_light_1"],
-             ["fan_exhaust", "fan_circulation", "heater_main", "co2_injector", "light_supplemental"]),
-            ("zone_bed", "Substrate Bed", ZoneType.SUBSTRATE_BED,
-             ["bed_moisture_1", "bed_temp_1", "bed_ec_1"],
+            ("zone_air", "Greenhouse Condition", ZoneType.GREENHOUSE_AIR,
+             ["air_temp_1", "air_rh_1", "air_light_1"],
+             ["fan_exhaust", "fan_circulation", "heater_main", "light_supplemental"]),
+            ("zone_bed_a", "Substrate A", ZoneType.SUBSTRATE_BED_A,
+             ["bed_a_temp", "bed_a_ph", "bed_a_moisture"],
              ["valve_irrigation"]),
-            ("zone_nft", "Hydroponic NFT", ZoneType.HYDROPONIC_NFT,
-             ["nft_ph_1", "nft_ec_1", "nft_water_temp_1"],
-             ["pump_nutrient"]),
-            ("zone_reservoir", "Water Reservoir", ZoneType.RESERVOIR,
-             ["res_level_1", "res_ph_1", "res_ec_1", "res_temp_1"],
-             ["pump_main"]),
+            ("zone_bed_b", "Substrate B", ZoneType.SUBSTRATE_BED_B,
+             ["bed_b_temp", "bed_b_ph", "bed_b_moisture"],
+             []),
+            ("zone_bed_c", "Substrate C", ZoneType.SUBSTRATE_BED_C,
+             ["bed_c_temp", "bed_c_ph", "bed_c_moisture"],
+             []),
         ]
         for zone_id, name, ztype, sensors, actuators in zone_defs:
             self._zones[zone_id] = Zone(
@@ -76,14 +76,13 @@ class TwinStateManager:
 
     def _initialize_actuators(self):
         actuator_defs = [
-            ("pump_main", "Main Water Pump", "pump", "zone_reservoir"),
-            ("pump_nutrient", "Nutrient Pump", "pump", "zone_nft"),
+            ("pump_main", "Main Water Pump", "pump", "zone_air"),
+            ("pump_nutrient", "Nutrient Pump", "pump", "zone_air"),
             ("fan_exhaust", "Exhaust Fan", "fan", "zone_air"),
             ("fan_circulation", "Circulation Fan", "fan", "zone_air"),
-            ("valve_irrigation", "Irrigation Valve", "valve", "zone_bed"),
+            ("valve_irrigation", "Irrigation Valve", "valve", "zone_bed_a"),
             ("heater_main", "Main Heater", "heater", "zone_air"),
             ("light_supplemental", "Supplemental Light", "light", "zone_air"),
-            ("co2_injector", "CO₂ Injector", "injector", "zone_air"),
         ]
         for aid, name, atype, zone_id in actuator_defs:
             self._actuators[aid] = Actuator(

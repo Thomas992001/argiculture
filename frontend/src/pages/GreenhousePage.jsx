@@ -56,10 +56,10 @@ export default function GreenhousePage() {
   const keyReadings = [
     { key: "zone_air:temperature", type: "temperature" },
     { key: "zone_air:humidity", type: "humidity" },
-    { key: "zone_air:co2", type: "co2" },
-    { key: "zone_bed:soil_moisture", type: "soil_moisture" },
-    { key: "zone_nft:ph", type: "ph" },
-    { key: "zone_reservoir:water_level", type: "water_level" },
+    { key: "zone_air:light_intensity", type: "light_intensity" },
+    { key: "zone_bed_a:soil_temperature", type: "soil_temperature" },
+    { key: "zone_bed_a:soil_ph", type: "soil_ph" },
+    { key: "zone_bed_a:soil_moisture", type: "soil_moisture" },
   ];
 
   return (

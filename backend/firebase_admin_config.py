@@ -7,7 +7,7 @@ from dotenv import load_dotenv
 load_dotenv() # Load environment variables from .env
 
 # Path to the service account key provided by the user
-SERVICE_ACCOUNT_PATH = r"d:\Code\Project\argiculture\backend\agritwin-mrv-firebase-adminsdk-fbsvc-cb08135bf7.json"
+SERVICE_ACCOUNT_PATH = r"C:\Users\User\Desktop\PropXpert\HTML-Project\algriculture-main\argiculture\backend\agritwin-mrv-firebase-adminsdk-fbsvc-cb08135bf7.json"
 DATABASE_URL = "https://agritwin-mrv-default-rtdb.firebaseio.com/"
 
 def initialize_firebase():

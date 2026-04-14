@@ -15,21 +15,17 @@ def get_now():
 class SensorType(str, Enum):
     TEMPERATURE = "temperature"
     HUMIDITY = "humidity"
-    CO2 = "co2"
-    SOIL_MOISTURE = "soil_moisture"
-    EC = "ec"
-    PH = "ph"
-    WATER_TEMPERATURE = "water_temperature"
-    WATER_LEVEL = "water_level"
     LIGHT_INTENSITY = "light_intensity"
+    SOIL_TEMPERATURE = "soil_temperature"
+    SOIL_PH = "soil_ph"
+    SOIL_MOISTURE = "soil_moisture"
 
 
 class ZoneType(str, Enum):
     GREENHOUSE_AIR = "greenhouse_air"
-    SUBSTRATE_BED = "substrate_bed"
-    HYDROPONIC_NFT = "hydroponic_nft"
-    HYDROPONIC_DWC = "hydroponic_dwc"
-    RESERVOIR = "reservoir"
+    SUBSTRATE_BED_A = "substrate_bed_a"
+    SUBSTRATE_BED_B = "substrate_bed_b"
+    SUBSTRATE_BED_C = "substrate_bed_c"
 
 
 # ── Sensor Reading ──

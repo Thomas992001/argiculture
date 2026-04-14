@@ -110,27 +110,25 @@ class GreenhouseSimulator:
 
     def _setup_sensors(self):
         sensors_config = [
-            # Zone A: Greenhouse Air
+            # Greenhouse Condition (zone_air)
             ("air_temp_1", SensorType.TEMPERATURE, "zone_air", "°C", 25.0, 5.0, 0.3, -6.0, 10.0, 45.0),
             ("air_rh_1", SensorType.HUMIDITY, "zone_air", "%", 65.0, 10.0, 1.5, 6.0, 20.0, 99.0),
-            ("air_co2_1", SensorType.CO2, "zone_air", "ppm", 600.0, 150.0, 20.0, 6.0, 300.0, 2000.0),
             ("air_light_1", SensorType.LIGHT_INTENSITY, "zone_air", "lux", 15000.0, 14000.0, 500.0, -6.0, 0.0, 100000.0),
 
-            # Zone B: Substrate Bed
-            ("bed_moisture_1", SensorType.SOIL_MOISTURE, "zone_bed", "%", 45.0, 8.0, 1.0, 3.0, 10.0, 90.0),
-            ("bed_temp_1", SensorType.TEMPERATURE, "zone_bed", "°C", 22.0, 3.0, 0.2, -4.0, 10.0, 40.0),
-            ("bed_ec_1", SensorType.EC, "zone_bed", "mS/cm", 1.8, 0.3, 0.05, 0.0, 0.0, 5.0),
+            # Substrate A (zone_bed_a)
+            ("bed_a_temp", SensorType.SOIL_TEMPERATURE, "zone_bed_a", "°C", 22.0, 3.0, 0.2, -4.0, 10.0, 40.0),
+            ("bed_a_ph", SensorType.SOIL_PH, "zone_bed_a", "pH", 6.2, 0.3, 0.04, 0.0, 4.0, 9.0),
+            ("bed_a_moisture", SensorType.SOIL_MOISTURE, "zone_bed_a", "%", 45.0, 8.0, 1.0, 3.0, 10.0, 90.0),
 
-            # Zone C: Hydroponic NFT
-            ("nft_ph_1", SensorType.PH, "zone_nft", "pH", 6.0, 0.3, 0.05, 0.0, 4.0, 9.0),
-            ("nft_ec_1", SensorType.EC, "zone_nft", "mS/cm", 2.0, 0.2, 0.03, 0.0, 0.0, 5.0),
-            ("nft_water_temp_1", SensorType.WATER_TEMPERATURE, "zone_nft", "°C", 21.0, 2.0, 0.15, -3.0, 10.0, 35.0),
+            # Substrate B (zone_bed_b)
+            ("bed_b_temp", SensorType.SOIL_TEMPERATURE, "zone_bed_b", "°C", 23.0, 2.5, 0.25, -3.5, 10.0, 40.0),
+            ("bed_b_ph", SensorType.SOIL_PH, "zone_bed_b", "pH", 6.0, 0.25, 0.05, 0.5, 4.0, 9.0),
+            ("bed_b_moisture", SensorType.SOIL_MOISTURE, "zone_bed_b", "%", 48.0, 7.0, 1.2, 2.5, 10.0, 90.0),
 
-            # Zone D: Reservoir
-            ("res_level_1", SensorType.WATER_LEVEL, "zone_reservoir", "cm", 60.0, 5.0, 0.5, 0.0, 0.0, 100.0),
-            ("res_ph_1", SensorType.PH, "zone_reservoir", "pH", 5.8, 0.2, 0.03, 0.0, 4.0, 9.0),
-            ("res_ec_1", SensorType.EC, "zone_reservoir", "mS/cm", 1.9, 0.15, 0.02, 0.0, 0.0, 5.0),
-            ("res_temp_1", SensorType.WATER_TEMPERATURE, "zone_reservoir", "°C", 20.0, 1.5, 0.1, -2.0, 10.0, 35.0),
+            # Substrate C (zone_bed_c)
+            ("bed_c_temp", SensorType.SOIL_TEMPERATURE, "zone_bed_c", "°C", 21.5, 2.8, 0.22, -4.5, 10.0, 40.0),
+            ("bed_c_ph", SensorType.SOIL_PH, "zone_bed_c", "pH", 5.9, 0.35, 0.04, -0.5, 4.0, 9.0),
+            ("bed_c_moisture", SensorType.SOIL_MOISTURE, "zone_bed_c", "%", 42.0, 9.0, 0.9, 3.5, 10.0, 90.0),
         ]
 
         for cfg in sensors_config:
@@ -157,7 +155,6 @@ class GreenhouseSimulator:
             "valve_irrigation": ActuatorState.OFF,
             "heater_main": ActuatorState.OFF,
             "light_supplemental": ActuatorState.OFF,
-            "co2_injector": ActuatorState.OFF,
         }
 
     def _compute_actuator_effects(self) -> Dict[str, float]:
@@ -166,21 +163,14 @@ class GreenhouseSimulator:
         if self._actuator_states.get("fan_exhaust") == ActuatorState.ON:
             effects["air_temp_1"] = -2.0
             effects["air_rh_1"] = -5.0
-            effects["air_co2_1"] = -50.0
 
         if self._actuator_states.get("heater_main") == ActuatorState.ON:
             effects["air_temp_1"] = effects.get("air_temp_1", 0) + 4.0
             effects["air_rh_1"] = effects.get("air_rh_1", 0) - 3.0
 
-        if self._actuator_states.get("pump_main") == ActuatorState.ON:
-            effects["res_level_1"] = -0.5
-            effects["bed_moisture_1"] = 8.0
-
         if self._actuator_states.get("valve_irrigation") == ActuatorState.ON:
-            effects["bed_moisture_1"] = effects.get("bed_moisture_1", 0) + 5.0
-
-        if self._actuator_states.get("co2_injector") == ActuatorState.ON:
-            effects["air_co2_1"] = effects.get("air_co2_1", 0) + 200.0
+            for bed in ("bed_a_moisture", "bed_b_moisture", "bed_c_moisture"):
+                effects[bed] = effects.get(bed, 0) + 5.0
 
         if self._actuator_states.get("light_supplemental") == ActuatorState.ON:
             effects["air_light_1"] = 8000.0

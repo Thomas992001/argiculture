@@ -1,52 +1,83 @@
 import { useState, useEffect, useCallback } from "react";
 import { Brain, Zap } from "lucide-react";
 import { api } from "../api/client";
-// import { useWebSocket } from "../hooks/useWebSocket";
 import { useRTDBData } from "../hooks/useRTDBData";
 import SensorCard from "../components/SensorCard";
 import RealtimeChart from "../components/RealtimeChart";
 
-const SENSOR_TYPES = [
-  { value: "temperature", label: "Temperature" },
-  { value: "humidity", label: "Humidity" },
-  { value: "co2", label: "CO₂" },
-  { value: "light_intensity", label: "Light" },
-  { value: "soil_moisture", label: "Soil Moisture" },
-  { value: "ec", label: "EC" },
-  { value: "ph", label: "pH" },
-  { value: "water_temperature", label: "Water Temp" },
-  { value: "water_level", label: "Water Level" },
+const ZONES = [
+  { value: "zone_air", label: "Greenhouse Condition" },
+  { value: "zone_bed", label: "Substrate Bed" },
 ];
 
-const ZONES = [
-  { value: "zone_air", label: "Greenhouse Air" },
-  { value: "zone_bed", label: "Substrate Bed" },
-  { value: "zone_nft", label: "Hydroponic NFT" },
-  { value: "zone_reservoir", label: "Reservoir" },
+const SENSOR_TYPES_BY_ZONE = {
+  zone_air: [
+    { value: "temperature", label: "Temperature" },
+    { value: "humidity", label: "Humidity" },
+    { value: "light_intensity", label: "Light" },
+  ],
+  zone_bed: [
+    { value: "soil_temperature", label: "Soil Temperature" },
+    { value: "soil_ph", label: "Soil pH Value" },
+    { value: "soil_moisture", label: "Soil Moisture" },
+  ],
+};
+
+const BED_ZONES = [
+  { value: "zone_bed_a", label: "Substrate A", color: "#22c55e" },
+  { value: "zone_bed_b", label: "Substrate B", color: "#3b82f6" },
+  { value: "zone_bed_c", label: "Substrate C", color: "#f59e0b" },
 ];
 
 export default function SensorsPage() {
   const [selectedZone, setSelectedZone] = useState("zone_air");
   const [selectedSensor, setSelectedSensor] = useState("temperature");
   const [history, setHistory] = useState([]);
+  const [bedHistories, setBedHistories] = useState({});
   const [stats, setStats] = useState(null);
   const [sensorData, setSensorData] = useState({});
   const [timeWindow, setTimeWindow] = useState(30);
-  // const { lastMessage } = useWebSocket();
   const { data: rtdbData } = useRTDBData();
+
+  const isSubstrateBed = selectedZone === "zone_bed";
+  const sensorTypes = SENSOR_TYPES_BY_ZONE[selectedZone] || [];
+
+  useEffect(() => {
+    const firstType = sensorTypes[0]?.value;
+    if (firstType) setSelectedSensor(firstType);
+  }, [selectedZone]);
 
   const fetchHistory = useCallback(async () => {
     try {
-      const [histData, statsData] = await Promise.all([
-        api.getSensorHistory(selectedZone, selectedSensor, timeWindow),
-        api.getStatistics(selectedZone, selectedSensor),
-      ]);
-      setHistory(histData);
-      setStats(statsData);
+      if (isSubstrateBed) {
+        const results = await Promise.all(
+          BED_ZONES.map((bed) =>
+            api.getSensorHistory(bed.value, selectedSensor, timeWindow)
+          )
+        );
+        const histories = {};
+        BED_ZONES.forEach((bed, i) => {
+          histories[bed.value] = results[i];
+        });
+        setBedHistories(histories);
+
+        const statsData = await api.getStatistics(
+          BED_ZONES[0].value,
+          selectedSensor
+        );
+        setStats(statsData);
+      } else {
+        const [histData, statsData] = await Promise.all([
+          api.getSensorHistory(selectedZone, selectedSensor, timeWindow),
+          api.getStatistics(selectedZone, selectedSensor),
+        ]);
+        setHistory(histData);
+        setStats(statsData);
+      }
     } catch {
       // ignore
     }
-  }, [selectedZone, selectedSensor, timeWindow]);
+  }, [selectedZone, selectedSensor, timeWindow, isSubstrateBed]);
 
   const fetchLatest = useCallback(async () => {
     try {
@@ -67,28 +98,36 @@ export default function SensorsPage() {
     return () => clearInterval(interval);
   }, [fetchHistory, fetchLatest]);
 
-  // Use Firebase RTDB for real-time updates
   useEffect(() => {
     if (rtdbData && Object.keys(rtdbData).length > 0) {
-      setSensorData(prev => ({ ...prev, ...rtdbData }));
+      setSensorData((prev) => ({ ...prev, ...rtdbData }));
     }
   }, [rtdbData]);
 
-  /* WebSocket listener commented out per user request
-  useEffect(() => {
-    if (lastMessage?.type === "sensor_update") {
-      const updated = { ...sensorData };
-      for (const r of lastMessage.readings) {
-        updated[`${r.zone_id}:${r.sensor_type}`] = r;
-      }
-      setSensorData(updated);
-    }
-  }, [lastMessage]);
-  */
+  const allowedTypes = sensorTypes.map(s => s.value);
 
   const zoneReadings = Object.entries(sensorData)
-    .filter(([key]) => key.startsWith(selectedZone))
-    .map(([key, r]) => ({ key, sensorType: key.split(":")[1], ...r }));
+    .filter(([key]) => {
+      const [zone, type] = key.split(":");
+      return zone === selectedZone && allowedTypes.includes(type);
+    })
+    .map(([key, r]) => ({
+      key,
+      sensorType: key.split(":")[1],
+      ...r,
+    }));
+
+  const bedSeries = isSubstrateBed
+    ? BED_ZONES.map((bed) => ({
+        label: bed.label,
+        data: bedHistories[bed.value] || [],
+        color: bed.color,
+      }))
+    : [];
+
+  const sensorLabel =
+    sensorTypes.find((s) => s.value === selectedSensor)?.label ||
+    selectedSensor;
 
   return (
     <div className="space-y-6">
@@ -118,7 +157,7 @@ export default function SensorsPage() {
           onChange={(e) => setSelectedSensor(e.target.value)}
           className="bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-200 focus:outline-none focus:ring-2 focus:ring-greenhouse-500"
         >
-          {SENSOR_TYPES.map((s) => (
+          {sensorTypes.map((s) => (
             <option key={s.value} value={s.value}>
               {s.label}
             </option>
@@ -138,25 +177,69 @@ export default function SensorsPage() {
         </select>
       </div>
 
-      {/* Current readings for zone */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        {zoneReadings.map((r) => (
-          <SensorCard
-            key={r.key}
-            sensorType={r.sensorType}
-            value={r.value}
-            quality={r.quality}
-          />
-        ))}
-      </div>
+      {/* Current readings */}
+      {isSubstrateBed ? (
+        <div className="space-y-4">
+          {BED_ZONES.map((bed) => {
+            const readings = Object.entries(sensorData)
+              .filter(([key]) => key.startsWith(bed.value))
+              .map(([key, r]) => ({
+                key,
+                sensorType: key.split(":")[1],
+                ...r,
+              }));
+            return (
+              <div key={bed.value}>
+                <h3 className="text-sm font-semibold text-gray-300 mb-2 flex items-center gap-2">
+                  <span
+                    className="w-2.5 h-2.5 rounded-full"
+                    style={{ backgroundColor: bed.color }}
+                  />
+                  {bed.label}
+                </h3>
+                <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                  {readings.map((r) => (
+                    <SensorCard
+                      key={r.key}
+                      sensorType={r.sensorType}
+                      value={r.value}
+                      quality={r.quality}
+                    />
+                  ))}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      ) : (
+        <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+          {zoneReadings.map((r) => (
+            <SensorCard
+              key={r.key}
+              sensorType={r.sensorType}
+              value={r.value}
+              quality={r.quality}
+            />
+          ))}
+        </div>
+      )}
 
       {/* Chart */}
-      <RealtimeChart
-        data={history}
-        sensorType={selectedSensor}
-        height={300}
-        title={`${selectedSensor} — ${selectedZone} (Last ${timeWindow} min)`}
-      />
+      {isSubstrateBed ? (
+        <RealtimeChart
+          series={bedSeries}
+          sensorType={selectedSensor}
+          height={300}
+          title={`${sensorLabel} — Substrate A / B / C (Last ${timeWindow} min)`}
+        />
+      ) : (
+        <RealtimeChart
+          data={history}
+          sensorType={selectedSensor}
+          height={300}
+          title={`${sensorLabel} — Greenhouse Condition (Last ${timeWindow} min)`}
+        />
+      )}
 
       {/* Statistics */}
       {stats && !stats.error && (
@@ -164,11 +247,13 @@ export default function SensorsPage() {
           <div className="flex items-center gap-2">
             <h3 className="text-sm font-medium text-gray-400">Statistics</h3>
             {stats.powered_by && (
-              <span className={`inline-flex items-center gap-1 text-[9px] px-1.5 py-0.5 rounded-full ${
-                stats.powered_by === "google_gemini"
-                  ? "bg-greenhouse-500/15 text-greenhouse-400 border border-greenhouse-500/30"
-                  : "bg-gray-700/50 text-gray-400 border border-gray-600/30"
-              }`}>
+              <span
+                className={`inline-flex items-center gap-1 text-[9px] px-1.5 py-0.5 rounded-full ${
+                  stats.powered_by === "google_gemini"
+                    ? "bg-greenhouse-500/15 text-greenhouse-400 border border-greenhouse-500/30"
+                    : "bg-gray-700/50 text-gray-400 border border-gray-600/30"
+                }`}
+              >
                 <Zap size={8} />
                 {stats.powered_by === "google_gemini" ? "Gemini" : "Local"}
               </span>
@@ -188,7 +273,9 @@ export default function SensorsPage() {
                 key={s.label}
                 className="bg-gray-900/50 rounded-lg border border-gray-800 p-3 text-center"
               >
-                <p className="text-[10px] text-gray-500 uppercase">{s.label}</p>
+                <p className="text-[10px] text-gray-500 uppercase">
+                  {s.label}
+                </p>
                 <p className="text-lg font-semibold text-gray-200 mt-1">
                   {typeof s.value === "number" ? s.value.toFixed(2) : "--"}
                 </p>
