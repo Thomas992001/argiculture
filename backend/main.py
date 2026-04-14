@@ -16,7 +16,7 @@ from fastapi.staticfiles import StaticFiles
 
 from backend.config import settings
 from backend.database import tsdb
-from backend.models import SensorReading, SystemStatus
+from backend.models import SensorReading, SystemStatus, get_now
 from backend.services.twin_state import twin_state
 from backend.services.rules_engine import rules_engine
 from simulator.greenhouse_simulator import GreenhouseSimulator
@@ -68,7 +68,7 @@ def on_sensor_data(readings: List[SensorReading]):
 
     payload = {
         "type": "sensor_update",
-        "timestamp": datetime.utcnow().isoformat(),
+        "timestamp": get_now().isoformat(),
         "readings": [
             {
                 "sensor_id": r.sensor_id,

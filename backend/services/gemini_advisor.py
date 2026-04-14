@@ -28,6 +28,7 @@ FALLBACK_MODELS = [
 
 from backend.config import settings
 from backend.database import tsdb
+from backend.models import get_now
 from backend.services.twin_state import twin_state
 from backend.services.ai_advisor import (
     advisor as rule_advisor,
@@ -73,7 +74,7 @@ def _build_sensor_context() -> str:
         return "No sensor data available yet. The system is still initializing."
 
     lines = ["## Current Greenhouse Sensor Data (Live)"]
-    lines.append(f"Timestamp: {datetime.utcnow().isoformat()}Z\n")
+    lines.append(f"Timestamp: {get_now().isoformat()}\n")
 
     zone_map = {}
     for key, reading in latest.items():
@@ -282,11 +283,11 @@ class GeminiAdvisor:
 
             self._conversation_history.append({
                 "role": "user", "text": user_message,
-                "timestamp": datetime.utcnow().isoformat(),
+                "timestamp": get_now().isoformat(),
             })
             self._conversation_history.append({
                 "role": "assistant", "text": response,
-                "timestamp": datetime.utcnow().isoformat(),
+                "timestamp": get_now().isoformat(),
             })
 
             return {
@@ -331,7 +332,7 @@ class GeminiAdvisor:
 
         try:
             response = await self._generate_async(prompt)
-            return {"report": response, "powered_by": "google_gemini", "generated_at": datetime.utcnow().isoformat()}
+            return {"report": response, "powered_by": "google_gemini", "generated_at": get_now().isoformat()}
         except Exception as e:
             return {"report": f"Error generating report: {e}", "powered_by": "error"}
 

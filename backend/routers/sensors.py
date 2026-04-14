@@ -4,7 +4,7 @@ from fastapi import APIRouter, Query
 from typing import List, Optional
 from datetime import datetime, timedelta
 
-from backend.models import SensorReading, SensorType
+from backend.models import SensorReading, SensorType, get_now
 from backend.database import tsdb
 
 router = APIRouter(prefix="/api/sensors", tags=["Sensors"])
@@ -29,7 +29,7 @@ async def get_sensor_history(
     limit: int = Query(500, ge=1, le=5000),
 ):
     """Get historical sensor readings for a specific zone and sensor type."""
-    start = datetime.utcnow() - timedelta(minutes=minutes)
+    start = get_now() - timedelta(minutes=minutes)
     readings = tsdb.query(zone_id, sensor_type.value, start_time=start, limit=limit)
     return [
         {

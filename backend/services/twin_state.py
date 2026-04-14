@@ -9,7 +9,7 @@ from typing import Dict, List, Optional
 
 from backend.models import (
     Zone, ZoneType, Actuator, ActuatorState, ActuatorCommand,
-    GreenhouseState, SensorReading, Alert, AlertSeverity,
+    GreenhouseState, SensorReading, Alert, AlertSeverity, get_now,
 )
 from backend.firebase_admin_config import db_fs
 
@@ -104,7 +104,7 @@ class TwinStateManager:
                 return None
             actuator.state = command.command
             actuator.current_value = command.value or (1.0 if command.command == ActuatorState.ON else 0.0)
-            actuator.last_changed = datetime.utcnow()
+            actuator.last_changed = get_now()
             return actuator
 
     def add_alert(self, severity: AlertSeverity, message: str,

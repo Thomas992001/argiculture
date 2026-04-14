@@ -21,6 +21,7 @@ from backend.models import (
     ZoneType,
     Actuator,
     ActuatorState,
+    get_now,
 )
 
 
@@ -75,7 +76,7 @@ class SensorSimulator:
             zone_id=self.zone_id,
             value=round(self._value, 2),
             unit=self.unit,
-            timestamp=datetime.utcnow(),
+            timestamp=get_now(),
             quality=quality,
         )
 

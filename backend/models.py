@@ -88,7 +88,7 @@ class Zone(BaseModel):
 
 
 class GreenhouseState(BaseModel):
-    timestamp: datetime = Field(default_factory=datetime.utcnow)
+    timestamp: datetime = Field(default_factory=get_now)
     zones: Dict[str, Zone] = {}
     actuators: Dict[str, Actuator] = {}
     alerts: List["Alert"] = []
@@ -111,7 +111,7 @@ class Alert(BaseModel):
     zone_id: Optional[str] = None
     value: Optional[float] = None
     threshold: Optional[float] = None
-    timestamp: datetime = Field(default_factory=datetime.utcnow)
+    timestamp: datetime = Field(default_factory=get_now)
     acknowledged: bool = False
 
 
