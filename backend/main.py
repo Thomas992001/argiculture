@@ -140,10 +140,21 @@ app.include_router(advisor.router)
 
 @app.post("/api/simulator/bind")
 async def bind_simulator(data: dict):
-    """Link the local simulator to a specific Firebase UID."""
+    """Link the local simulator to a specific Firebase UID and start cloud listeners."""
     uid = data.get("uid")
     if uid:
         tsdb.set_active_uid(uid)
+        
+        # 1. Pull previous state from cloud (Restore session)
+        twin_state.pull_actuators_from_cloud(uid)
+        
+        # 2. Start background listeners for cloud synchronization
+        tsdb.start_rtdb_listener(uid)
+        twin_state.start_control_listener(uid)
+        
+        # 3. Push current state to cloud (Ensure paths exist/Sync back)
+        twin_state.push_actuators_to_cloud(uid)
+        
         return {"status": "bound", "uid": uid}
     return {"status": "error", "message": "No UID provided"}
 

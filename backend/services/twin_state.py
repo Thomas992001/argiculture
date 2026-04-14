@@ -11,6 +11,7 @@ from backend.models import (
     Zone, ZoneType, Actuator, ActuatorState, ActuatorCommand,
     GreenhouseState, SensorReading, Alert, AlertSeverity,
 )
+from backend.firebase_admin_config import db_fs
 
 
 class TwinStateManager:
@@ -22,9 +23,35 @@ class TwinStateManager:
         self._actuators: Dict[str, Actuator] = {}
         self._alerts: List[Alert] = []
         self._alert_counter = 0
+        self._firestore_watch = None
 
         self._initialize_zones()
         self._initialize_actuators()
+
+    def start_control_listener(self, uid: str):
+        """Listen to control signals from Firestore to trigger actuators."""
+        if not db_fs:
+            return
+
+        if self._firestore_watch:
+            self._firestore_watch.unsubscribe()
+
+        doc_ref = db_fs.collection("users").document(uid).collection("control").document("latest")
+
+        def on_snapshot(doc_snapshot, changes, read_time):
+            for doc in doc_snapshot:
+                data = doc.to_dict()
+                if not data:
+                    continue
+                
+                print(f"DEBUG: Cloud Control Signal Received: {data}")
+                for aid, state_bool in data.items():
+                    if aid in self._actuators:
+                        cmd = ActuatorState.ON if state_bool else ActuatorState.OFF
+                        self.set_actuator(ActuatorCommand(actuator_id=aid, command=cmd))
+
+        self._firestore_watch = doc_ref.on_snapshot(on_snapshot)
+        print(f"DEBUG: Firestore Listener started for {doc_ref.path}")
 
     def _initialize_zones(self):
         zone_defs = [
@@ -135,6 +162,51 @@ class TwinStateManager:
             if include_acknowledged:
                 return list(self._alerts[-50:])
             return [a for a in self._alerts if not a.acknowledged][-50:]
+
+    def push_actuators_to_cloud(self, uid: str):
+        """Push the current in-memory state of all actuators to Firestore for initialization."""
+        if not db_fs:
+            return
+        
+        with self._lock:
+            # Flatten actuator states into a simple {id: boolean} map
+            states = {
+                aid: (act.state == ActuatorState.ON)
+                for aid, act in self._actuators.items()
+            }
+            
+        def _task():
+            try:
+                doc_ref = db_fs.collection("users").document(uid).collection("control").document("latest")
+                doc_ref.set(states, merge=True)
+                print(f"DEBUG: Initialized Firestore control states for {uid}")
+            except Exception as e:
+                print(f"Error syncing actuators to cloud: {e}")
+
+        threading.Thread(target=_task, daemon=True).start()
+
+    def pull_actuators_from_cloud(self, uid: str):
+        """Fetch the current cloud state and apply it to local actuators."""
+        if not db_fs:
+            return
+            
+        def _task():
+            try:
+                doc_ref = db_fs.collection("users").document(uid).collection("control").document("latest")
+                doc = doc_ref.get()
+                if doc.exists:
+                    data = doc.to_dict()
+                    print(f"DEBUG: Restoring states from Cloud: {data}")
+                    for aid, state_bool in data.items():
+                        if aid in self._actuators:
+                            cmd = ActuatorState.ON if state_bool else ActuatorState.OFF
+                            self.set_actuator(ActuatorCommand(actuator_id=aid, command=cmd))
+                else:
+                    print(f"DEBUG: No previous cloud state found for {uid}, skipping pull.")
+            except Exception as e:
+                print(f"Error pulling actuators from cloud: {e}")
+
+        threading.Thread(target=_task, daemon=True).start()
 
 
 twin_state = TwinStateManager()

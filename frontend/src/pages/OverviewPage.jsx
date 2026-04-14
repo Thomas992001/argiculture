@@ -8,7 +8,8 @@ import {
   Sparkles,
 } from "lucide-react";
 import { api } from "../api/client";
-import { useWebSocket } from "../hooks/useWebSocket";
+// import { useWebSocket } from "../hooks/useWebSocket";
+import { useRTDBData } from "../hooks/useRTDBData";
 import SensorCard from "../components/SensorCard";
 import RealtimeChart from "../components/RealtimeChart";
 import AlertPanel from "../components/AlertPanel";
@@ -27,7 +28,8 @@ export default function OverviewPage() {
   const [alerts, setAlerts] = useState([]);
   const [status, setStatus] = useState(null);
   const [history, setHistory] = useState([]);
-  const { lastMessage } = useWebSocket();
+  // const { lastMessage } = useWebSocket();
+  const { data: rtdbData } = useRTDBData();
 
   const fetchData = useCallback(async () => {
     try {
@@ -64,6 +66,15 @@ export default function OverviewPage() {
     return () => clearInterval(interval);
   }, [fetchData, fetchHistory]);
 
+  // Use Firebase RTDB for real-time updates
+  useEffect(() => {
+    if (rtdbData && Object.keys(rtdbData).length > 0) {
+      setPrevData(sensorData);
+      setSensorData(prev => ({ ...prev, ...rtdbData }));
+    }
+  }, [rtdbData]);
+
+  /* WebSocket listener commented out per user request
   useEffect(() => {
     if (lastMessage?.type === "sensor_update") {
       setPrevData(sensorData);
@@ -75,6 +86,7 @@ export default function OverviewPage() {
       setSensorData(updated);
     }
   }, [lastMessage]);
+  */
 
   const sensorEntries = Object.entries(sensorData);
   const groupedByZone = {};

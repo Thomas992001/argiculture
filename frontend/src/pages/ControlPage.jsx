@@ -1,10 +1,14 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { api } from "../api/client";
+import { onAuthStateChanged } from "firebase/auth";
+import { db, auth } from "../firebase";
+import { onSnapshot, doc } from "firebase/firestore";
 import ControlPanel from "../components/ControlPanel";
 import AlertPanel from "../components/AlertPanel";
 
 export default function ControlPage() {
   const [actuators, setActuators] = useState([]);
+  const [cloudStates, setCloudStates] = useState({});
   const [alerts, setAlerts] = useState([]);
 
   const fetchData = useCallback(async () => {
@@ -15,16 +19,59 @@ export default function ControlPage() {
       ]);
       setActuators(acts);
       setAlerts(alertsData);
-    } catch {
-      // ignore
-    }
+    } catch (err) { }
   }, []);
 
+  // Merge metadata from API with real-time states from Firestore
+  const mergedActuators = useMemo(() => {
+    return actuators.map(act => {
+      if (act.actuator_id in cloudStates) {
+        return {
+          ...act,
+          state: cloudStates[act.actuator_id] ? "on" : "off"
+        };
+      }
+      return act;
+    });
+  }, [actuators, cloudStates]);
+
+  // Fetch base metadata once
   useEffect(() => {
     fetchData();
-    const interval = setInterval(fetchData, 3000);
-    return () => clearInterval(interval);
   }, [fetchData]);
+
+  // Listen to Firestore for real-time switch states
+  useEffect(() => {
+    let unsubscribeSnapshot = null;
+
+    const unsubscribeAuth = onAuthStateChanged(auth, (user) => {
+      // Clean up previous listener if it exists
+      if (unsubscribeSnapshot) {
+        unsubscribeSnapshot();
+        unsubscribeSnapshot = null;
+      }
+
+      if (!user) return;
+
+      console.log("DEBUG: Starting Firestore listener for UID:", user.uid);
+      const controlRef = doc(db, "users", user.uid, "control", "latest");
+      
+      unsubscribeSnapshot = onSnapshot(controlRef, (snapshot) => {
+        const data = snapshot.data();
+        if (data) {
+          console.log("DEBUG: Received Control Snapshot:", data);
+          setCloudStates(data);
+        }
+      }, (error) => {
+        console.error("Firestore listener error:", error);
+      });
+    });
+
+    return () => {
+      unsubscribeAuth();
+      if (unsubscribeSnapshot) unsubscribeSnapshot();
+    };
+  }, []);
 
   return (
     <div className="space-y-6">
@@ -40,7 +87,7 @@ export default function ControlPage() {
           <h3 className="text-sm font-medium text-gray-400 mb-3">
             Actuators
           </h3>
-          <ControlPanel actuators={actuators} onRefresh={fetchData} />
+          <ControlPanel actuators={mergedActuators} onRefresh={fetchData} />
         </div>
         <div>
           <h3 className="text-sm font-medium text-gray-400 mb-3">Alerts</h3>

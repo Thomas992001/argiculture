@@ -1,7 +1,8 @@
 import { useState, useEffect, useCallback } from "react";
 import { Brain, Zap } from "lucide-react";
 import { api } from "../api/client";
-import { useWebSocket } from "../hooks/useWebSocket";
+// import { useWebSocket } from "../hooks/useWebSocket";
+import { useRTDBData } from "../hooks/useRTDBData";
 import SensorCard from "../components/SensorCard";
 import RealtimeChart from "../components/RealtimeChart";
 
@@ -31,7 +32,8 @@ export default function SensorsPage() {
   const [stats, setStats] = useState(null);
   const [sensorData, setSensorData] = useState({});
   const [timeWindow, setTimeWindow] = useState(30);
-  const { lastMessage } = useWebSocket();
+  // const { lastMessage } = useWebSocket();
+  const { data: rtdbData } = useRTDBData();
 
   const fetchHistory = useCallback(async () => {
     try {
@@ -65,6 +67,14 @@ export default function SensorsPage() {
     return () => clearInterval(interval);
   }, [fetchHistory, fetchLatest]);
 
+  // Use Firebase RTDB for real-time updates
+  useEffect(() => {
+    if (rtdbData && Object.keys(rtdbData).length > 0) {
+      setSensorData(prev => ({ ...prev, ...rtdbData }));
+    }
+  }, [rtdbData]);
+
+  /* WebSocket listener commented out per user request
   useEffect(() => {
     if (lastMessage?.type === "sensor_update") {
       const updated = { ...sensorData };
@@ -74,6 +84,7 @@ export default function SensorsPage() {
       setSensorData(updated);
     }
   }, [lastMessage]);
+  */
 
   const zoneReadings = Object.entries(sensorData)
     .filter(([key]) => key.startsWith(selectedZone))

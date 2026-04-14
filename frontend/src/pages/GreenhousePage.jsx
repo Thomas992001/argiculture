@@ -1,13 +1,15 @@
 import { useState, useEffect, useCallback } from "react";
 import { api } from "../api/client";
-import { useWebSocket } from "../hooks/useWebSocket";
+// import { useWebSocket } from "../hooks/useWebSocket";
+import { useRTDBData } from "../hooks/useRTDBData";
 import VirtualGreenhouse from "../components/VirtualGreenhouse";
 import SensorCard from "../components/SensorCard";
 
 export default function GreenhousePage() {
   const [sensorData, setSensorData] = useState({});
   const [actuatorStates, setActuatorStates] = useState({});
-  const { lastMessage } = useWebSocket();
+  // const { lastMessage } = useWebSocket();
+  const { data: rtdbData } = useRTDBData();
 
   const fetchData = useCallback(async () => {
     try {
@@ -32,6 +34,14 @@ export default function GreenhousePage() {
     return () => clearInterval(interval);
   }, [fetchData]);
 
+  // Use Firebase RTDB for real-time updates
+  useEffect(() => {
+    if (rtdbData && Object.keys(rtdbData).length > 0) {
+      setSensorData(prev => ({ ...prev, ...rtdbData }));
+    }
+  }, [rtdbData]);
+
+  /* WebSocket listener commented out per user request
   useEffect(() => {
     if (lastMessage?.type === "sensor_update") {
       const updated = { ...sensorData };
@@ -41,6 +51,7 @@ export default function GreenhousePage() {
       setSensorData(updated);
     }
   }, [lastMessage]);
+  */
 
   const keyReadings = [
     { key: "zone_air:temperature", type: "temperature" },

@@ -10,6 +10,8 @@ import {
   Loader2,
 } from "lucide-react";
 import { api } from "../api/client";
+import { db, auth } from "../firebase";
+import { doc, setDoc } from "firebase/firestore";
 
 const ACTUATOR_CONFIG = {
   pump_main: { icon: Droplets, label: "Main Pump", color: "blue" },
@@ -92,14 +94,37 @@ function ActuatorSwitch({ actuator, onToggle }) {
 
 export default function ControlPanel({ actuators = [], onRefresh }) {
   const handleToggle = async (actuatorId, command) => {
-    await api.controlActuator(actuatorId, command);
-    onRefresh?.();
+    const user = auth.currentUser;
+    if (!user) return;
+
+    const controlRef = doc(db, "users", user.uid, "control", "latest");
+    const state = command === "on";
+
+    try {
+      await setDoc(controlRef, { [actuatorId]: state }, { merge: true });
+      // We don't call onRefresh here anymore because the 
+      // ControlPage will be listening to Firestore snapshots
+    } catch (error) {
+      console.error("Firestore control error:", error);
+    }
   };
 
   const handleEmergencyStop = async () => {
-    if (window.confirm("Emergency stop: turn off ALL actuators?")) {
-      await api.emergencyStop();
-      onRefresh?.();
+    const user = auth.currentUser;
+    if (!user || !window.confirm("Emergency stop: turn off ALL actuators?")) return;
+
+    const controlRef = doc(db, "users", user.uid, "control", "latest");
+    
+    // Construct all-off object
+    const allOff = {};
+    actuators.forEach(act => {
+      allOff[act.actuator_id] = false;
+    });
+
+    try {
+      await setDoc(controlRef, allOff, { merge: true });
+    } catch (error) {
+       console.error("Emergency stop error:", error);
     }
   };
 
