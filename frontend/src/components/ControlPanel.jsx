@@ -6,6 +6,7 @@ import {
   Flame,
   Sun,
   Wind,
+  CloudHail,
   AlertOctagon,
   Loader2,
 } from "lucide-react";
@@ -21,6 +22,7 @@ const ACTUATOR_CONFIG = {
   valve_irrigation: { icon: Droplets, label: "Irrigation Valve", color: "teal" },
   heater_main: { icon: Flame, label: "Main Heater", color: "red" },
   light_supplemental: { icon: Sun, label: "Supplemental Light", color: "yellow" },
+  co2_injector: { icon: CloudHail, label: "CO₂ Injector", color: "emerald" },
 };
 
 function ActuatorSwitch({ actuator, onToggle }) {
