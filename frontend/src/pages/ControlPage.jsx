@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { api } from "../api/client";
 import { onAuthStateChanged } from "firebase/auth";
 import { db, auth } from "../firebase";
@@ -6,39 +6,42 @@ import { onSnapshot, doc } from "firebase/firestore";
 import ControlPanel from "../components/ControlPanel";
 import AlertPanel from "../components/AlertPanel";
 
+// Static actuator metadata — matches backend twin_state.py
+const ACTUATOR_DEFS = [
+  { actuator_id: "pump_main", name: "Main Water Pump", type: "pump", zone_id: "zone_air" },
+  { actuator_id: "pump_nutrient", name: "Nutrient Pump", type: "pump", zone_id: "zone_air" },
+  { actuator_id: "fan_exhaust", name: "Exhaust Fan", type: "fan", zone_id: "zone_air" },
+  { actuator_id: "fan_circulation", name: "Circulation Fan", type: "fan", zone_id: "zone_air" },
+  { actuator_id: "valve_irrigation", name: "Irrigation Valve", type: "valve", zone_id: "zone_bed_a" },
+  { actuator_id: "heater_main", name: "Main Heater", type: "heater", zone_id: "zone_air" },
+  { actuator_id: "light_supplemental", name: "Supplemental Light", type: "light", zone_id: "zone_air" },
+];
+
 export default function ControlPage() {
-  const [actuators, setActuators] = useState([]);
   const [cloudStates, setCloudStates] = useState({});
   const [alerts, setAlerts] = useState([]);
 
-  const fetchData = useCallback(async () => {
+  const fetchAlerts = async () => {
     try {
-      const [acts, alertsData] = await Promise.all([
-        api.getActuators(),
-        api.getAlerts(),
-      ]);
-      setActuators(acts);
+      const alertsData = await api.getAlerts();
       setAlerts(alertsData);
-    } catch (err) { }
-  }, []);
+    } catch { }
+  };
 
-  // Merge metadata from API with real-time states from Firestore
+  // Merge static metadata with real-time Firestore states
   const mergedActuators = useMemo(() => {
-    return actuators.map(act => {
-      if (act.actuator_id in cloudStates) {
-        return {
-          ...act,
-          state: cloudStates[act.actuator_id] ? "on" : "off"
-        };
-      }
-      return act;
-    });
-  }, [actuators, cloudStates]);
+    return ACTUATOR_DEFS.map(act => ({
+      ...act,
+      state: (act.actuator_id in cloudStates)
+        ? (cloudStates[act.actuator_id] ? "on" : "off")
+        : "off",
+    }));
+  }, [cloudStates]);
 
-  // Fetch base metadata once
+  // Fetch alerts once (optional, will fail silently if backend is down)
   useEffect(() => {
-    fetchData();
-  }, [fetchData]);
+    fetchAlerts();
+  }, []);
 
   // Listen to Firestore for real-time switch states
   useEffect(() => {
@@ -87,13 +90,14 @@ export default function ControlPage() {
           <h3 className="text-sm font-medium text-gray-400 mb-3">
             Actuators
           </h3>
-          <ControlPanel actuators={mergedActuators} onRefresh={fetchData} />
+          <ControlPanel actuators={mergedActuators} onRefresh={fetchAlerts} />
         </div>
         <div>
           <h3 className="text-sm font-medium text-gray-400 mb-3">Alerts</h3>
-          <AlertPanel alerts={alerts} onRefresh={fetchData} />
+          <AlertPanel alerts={alerts} onRefresh={fetchAlerts} />
         </div>
       </div>
     </div>
   );
 }
+
