@@ -19,6 +19,11 @@ import SensorCard from "../components/SensorCard";
 import RealtimeChart from "../components/RealtimeChart";
 import AlertPanel from "../components/AlertPanel";
 import { AiSummaryBanner, AiInsightPanel } from "../components/AiInsightCards";
+import {
+  entriesForBedZone,
+  entriesForZoneAir,
+  bedSensorCardType,
+} from "../utils/bedSensorKeys";
 
 const BED_ZONES = [
   { value: "zone_bed_a", label: "Substrate A", color: "#22c55e" },
@@ -102,9 +107,8 @@ export default function OverviewPage() {
     }
   }, [rtdbData]);
 
-  const airReadingsRaw = Object.entries(sensorData)
+  const airReadingsRaw = entriesForZoneAir(sensorData)
     .filter(([key, reading]) => {
-      if (!key.startsWith("zone_air:")) return false;
       if (!reading || typeof reading !== "object") return false;
       const st =
         reading.sensor_type != null
@@ -115,24 +119,19 @@ export default function OverviewPage() {
       const type = (st || "").toLowerCase();
       return !HIDDEN_ZONE_AIR_TYPES.has(type);
     })
-    .map(([key, reading]) => {
-      const st =
-        reading.sensor_type != null
-          ? typeof reading.sensor_type === "string"
-            ? reading.sensor_type
-            : reading.sensor_type.value
-          : key.split(":")[1];
-      const sensorType = st === "light_intensity" ? "light" : st;
-      return { key, sensorType, ...reading };
-    });
+    .map(([key, reading]) => ({
+      key,
+      sensorType: bedSensorCardType(reading, key),
+      ...reading,
+    }))
+    .sort((a, b) => a.key.localeCompare(b.key));
 
-  const bySensorId = new Map();
+  const bySensorType = new Map();
   for (const r of airReadingsRaw) {
-    const sid = r.sensor_id || r.key;
-    if (bySensorId.has(sid)) continue;
-    bySensorId.set(sid, r);
+    if (bySensorType.has(r.sensorType)) continue;
+    bySensorType.set(r.sensorType, r);
   }
-  const airReadings = Array.from(bySensorId.values());
+  const airReadings = Array.from(bySensorType.values());
 
   const bedMoistureSeries = BED_ZONES.map((bed) => ({
     label: bed.label,
@@ -285,13 +284,13 @@ export default function OverviewPage() {
         </h3>
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
           {BED_ZONES.map((bed) => {
-            const readings = Object.entries(sensorData)
-              .filter(([key]) => key.startsWith(`${bed.value}:`))
-              .map(([key, reading]) => ({
+            const readings = entriesForBedZone(sensorData, bed.value).map(
+              ([key, reading]) => ({
                 key,
-                sensorType: key.split(":")[1],
+                sensorType: bedSensorCardType(reading, key),
                 ...reading,
-              }));
+              })
+            );
             return (
               <div key={bed.value}>
                 <h4 className="text-xs font-medium text-gray-400 mb-2 flex items-center gap-2">

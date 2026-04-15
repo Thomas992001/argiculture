@@ -4,6 +4,7 @@ import { Brain, Zap } from "lucide-react";
 import { api } from "../api/client";
 import { useRTDBData } from "../hooks/useRTDBData";
 import SensorCard from "../components/SensorCard";
+import { entriesForBedZone, entriesForZoneAir } from "../utils/bedSensorKeys";
 import RealtimeChart from "../components/RealtimeChart";
 
 const ZONES = [
@@ -45,10 +46,8 @@ function readingSensorType(r, key) {
 }
 
 function buildGreenhouseZoneReadings(sensorData, allowedTypes) {
-  const rows = Object.entries(sensorData)
+  const rows = entriesForZoneAir(sensorData)
     .filter(([key, r]) => {
-      const [zone] = key.split(":");
-      if (zone !== "zone_air") return false;
       if (!r || typeof r !== "object") return false;
       const sensorType = readingSensorType(r, key);
       if (!sensorType) return false;
@@ -58,15 +57,15 @@ function buildGreenhouseZoneReadings(sensorData, allowedTypes) {
       key,
       sensorType: readingSensorType(r, key),
       ...r,
-    }));
+    }))
+    .sort((a, b) => a.key.localeCompare(b.key));
 
-  const bySensorId = new Map();
+  const bySensorType = new Map();
   for (const row of rows) {
-    const sid = row.sensor_id || row.key;
-    if (bySensorId.has(sid)) continue;
-    bySensorId.set(sid, row);
+    if (bySensorType.has(row.sensorType)) continue;
+    bySensorType.set(row.sensorType, row);
   }
-  return Array.from(bySensorId.values());
+  return Array.from(bySensorType.values());
 }
 
 export default function SensorsPage() {
@@ -266,13 +265,13 @@ export default function SensorsPage() {
       {isSubstrateBed ? (
         <div className="space-y-4">
           {BED_ZONES.map((bed) => {
-            const readings = Object.entries(sensorData)
-              .filter(([key]) => key.startsWith(`${bed.value}:`))
-              .map(([key, r]) => ({
+            const readings = entriesForBedZone(sensorData, bed.value).map(
+              ([key, r]) => ({
                 key,
                 sensorType: readingSensorType(r, key),
                 ...r,
-              }));
+              })
+            );
             return (
               <div key={bed.value}>
                 <h3 className="text-sm font-semibold text-gray-300 mb-2 flex items-center gap-2">
