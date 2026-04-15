@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Droplets, ArrowLeft } from "lucide-react";
+import { Droplets, ArrowLeft, Thermometer, Sun } from "lucide-react";
 import { useRTDBData } from "../hooks/useRTDBData";
 import VirtualGreenhouse from "../components/VirtualGreenhouse";
 import SensorCard from "../components/SensorCard";
@@ -17,6 +17,10 @@ export default function GreenhousePage() {
   const sensorData = rtdbData || {};
 
   const humidity1 = sensorData["zone_air:humidity"]?.value;
+  const airTemp = sensorData["zone_air:temperature"]?.value;
+  const lightLevel =
+    sensorData["zone_air:light"]?.value ??
+    sensorData["zone_air:light_intensity"]?.value;
 
   const handleBedSelect = (bedId) => {
     setSelectedBed((prev) => (prev === bedId ? null : bedId));
@@ -34,16 +38,35 @@ export default function GreenhousePage() {
         </p>
       </div>
 
-      {/* Air humidity — the only greenhouse-level sensor per spec */}
-      <div className="grid grid-cols-2 gap-3">
+      {/* Greenhouse-level sensors */}
+      <div className="grid grid-cols-3 gap-3">
+        <LiveCard
+          icon={Thermometer}
+          label="Air Temperature"
+          value={airTemp}
+          unit="°C"
+          color="text-red-400"
+          bg="bg-red-400/10"
+          border="border-red-400/20"
+        />
         <LiveCard
           icon={Droplets}
-          label="Air Humidity (Sensor 1)"
+          label="Air Humidity"
           value={humidity1}
           unit="%"
           color="text-blue-400"
           bg="bg-blue-400/10"
           border="border-blue-400/20"
+        />
+        <LiveCard
+          icon={Sun}
+          label="Light Level"
+          value={lightLevel}
+          unit="lux"
+          color="text-yellow-400"
+          bg="bg-yellow-400/10"
+          border="border-yellow-400/20"
+          decimals={0}
         />
       </div>
 
@@ -103,7 +126,7 @@ export default function GreenhousePage() {
 
 function LiveCard({ icon: Icon, label, value, unit, color, bg, border, decimals = 1 }) {
   const display =
-    value != null ? (decimals === 0 ? Math.round(value) : value.toFixed(decimals)) : "--";
+    value != null ? (decimals === 0 ? Math.round(value).toLocaleString() : value.toFixed(decimals)) : "--";
 
   return (
     <div className={`${bg} rounded-xl p-3 border ${border}`}>
@@ -118,5 +141,3 @@ function LiveCard({ icon: Icon, label, value, unit, color, bg, border, decimals 
     </div>
   );
 }
-
-

@@ -99,21 +99,31 @@ def _build_sensor_context() -> str:
             lines.append(f"- {r.sensor_type.value}: {r.value} {r.unit} (trend: {trend}){quality_flag}")
         lines.append("")
 
-    # VPD calculation using avg soil temp as proxy (no air temp sensor per spec)
-    soil_temps = [
-        latest.get(f"zone_bed_{bed}:soil_temperature")
-        for bed in ("a", "b", "c")
-    ]
-    valid_temps = [r for r in soil_temps if r is not None]
-    rh_r = latest.get("zone_air:humidity")
-    if valid_temps and rh_r:
-        avg_temp = sum(r.value for r in valid_temps) / len(valid_temps)
+    # VPD calculation — prefer air temperature, fall back to avg soil temp
+    air_temp_r = tsdb.get_latest("zone_air", "temperature")
+    rh_r = tsdb.get_latest("zone_air", "humidity")
+    if air_temp_r and rh_r:
+        avg_temp = air_temp_r.value
         vpd = calculate_vpd(avg_temp, rh_r.value)
         dp = calculate_dew_point(avg_temp, rh_r.value)
         lines.append(f"### Derived Metrics")
-        lines.append(f"- VPD: {vpd} kPa (using avg soil temp {avg_temp:.1f}°C as proxy)")
+        lines.append(f"- VPD: {vpd} kPa (air temp {avg_temp:.1f}°C)")
         lines.append(f"- Dew Point: {dp}°C")
         lines.append("")
+    else:
+        soil_temps = [
+            tsdb.get_latest(f"zone_bed_{bed}", "soil_temperature")
+            for bed in ("a", "b", "c")
+        ]
+        valid_temps = [r for r in soil_temps if r is not None]
+        if valid_temps and rh_r:
+            avg_temp = sum(r.value for r in valid_temps) / len(valid_temps)
+            vpd = calculate_vpd(avg_temp, rh_r.value)
+            dp = calculate_dew_point(avg_temp, rh_r.value)
+            lines.append(f"### Derived Metrics")
+            lines.append(f"- VPD: {vpd} kPa (using avg soil temp {avg_temp:.1f}°C as proxy)")
+            lines.append(f"- Dew Point: {dp}°C")
+            lines.append("")
 
     # Actuator states
     actuators = twin_state.get_all_actuators()

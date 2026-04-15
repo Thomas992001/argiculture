@@ -13,6 +13,9 @@ import {
 
 const COLORS = {
   humidity: "#60a5fa",
+  temperature: "#f87171",
+  light: "#facc15",
+  light_intensity: "#facc15",
   soil_temperature: "#fb923c",
   soil_ph: "#4ade80",
   soil_moisture: "#22d3ee",

@@ -1,14 +1,52 @@
 import { useState, useEffect, useCallback } from "react";
-import { Brain, ShieldAlert, TrendingUp, Zap } from "lucide-react";
+import {
+  Brain,
+  ShieldAlert,
+  TrendingUp,
+  Zap,
+  Thermometer,
+  Droplets,
+  Beaker,
+  Sun,
+  Gauge,
+  CheckCircle,
+  AlertCircle,
+} from "lucide-react";
 import { api } from "../api/client";
 import ForecastChart from "../components/ForecastChart";
 
 const FORECAST_OPTIONS = [
-  { zone: "zone_air", sensor: "humidity", label: "Air Humidity Forecast" },
-  { zone: "zone_bed_a", sensor: "soil_temperature", label: "Soil Temperature Forecast" },
-  { zone: "zone_bed_a", sensor: "soil_ph", label: "Soil pH Value Forecast" },
-  { zone: "zone_bed_a", sensor: "soil_moisture", label: "Soil Moisture Forecast" },
+  { zone: "zone_air", sensor: "humidity", label: "Air Humidity" },
+  { zone: "zone_air", sensor: "temperature", label: "Air Temperature" },
+  { zone: "zone_air", sensor: "light", label: "Light Level" },
+  { zone: "zone_bed_a", sensor: "soil_temperature", label: "Soil Temp (A)" },
+  { zone: "zone_bed_a", sensor: "soil_ph", label: "Soil pH (A)" },
+  { zone: "zone_bed_a", sensor: "soil_moisture", label: "Soil Moisture (A)" },
 ];
+
+const SENSOR_TYPE_STYLES = {
+  humidity: { icon: Droplets, color: "text-blue-400", bg: "bg-blue-500/10", border: "border-blue-500/25", dot: "bg-blue-400", label: "Humidity" },
+  temperature: { icon: Thermometer, color: "text-red-400", bg: "bg-red-500/10", border: "border-red-500/25", dot: "bg-red-400", label: "Air Temp" },
+  light: { icon: Sun, color: "text-yellow-400", bg: "bg-yellow-500/10", border: "border-yellow-500/25", dot: "bg-yellow-400", label: "Light" },
+  soil_temperature: { icon: Thermometer, color: "text-orange-400", bg: "bg-orange-500/10", border: "border-orange-500/25", dot: "bg-orange-400", label: "Soil Temp" },
+  soil_ph: { icon: Beaker, color: "text-green-400", bg: "bg-green-500/10", border: "border-green-500/25", dot: "bg-green-400", label: "Soil pH" },
+  soil_moisture: { icon: Droplets, color: "text-cyan-400", bg: "bg-cyan-500/10", border: "border-cyan-500/25", dot: "bg-cyan-400", label: "Soil Moisture" },
+};
+
+const ZONE_SHORT = {
+  zone_air: "Air",
+  zone_bed_a: "Bed A",
+  zone_bed_b: "Bed B",
+  zone_bed_c: "Bed C",
+};
+
+function getSensorStyle(sensorType) {
+  const t = sensorType === "light_intensity" ? "light" : sensorType;
+  return SENSOR_TYPE_STYLES[t] || {
+    icon: Gauge, color: "text-gray-400", bg: "bg-gray-500/10",
+    border: "border-gray-500/25", dot: "bg-gray-400", label: sensorType,
+  };
+}
 
 export default function AnalyticsPage() {
   const [selectedForecast, setSelectedForecast] = useState(0);
@@ -129,34 +167,52 @@ export default function AnalyticsPage() {
           </div>
         )}
 
+        {/* Detected anomalies - color-coded */}
         {detectedAnomalies.length > 0 && (
           <div className="space-y-2">
-            <p className="text-xs text-red-400 font-medium">
+            <p className="text-xs text-red-400 font-medium flex items-center gap-1.5">
+              <AlertCircle size={12} />
               Anomalies Detected ({detectedAnomalies.length})
             </p>
-            {detectedAnomalies.map((a, i) => (
-              <div
-                key={i}
-                className="flex items-center justify-between p-3 rounded-lg bg-red-500/10 border border-red-500/20"
-              >
-                <div>
-                  <p className="text-sm text-red-300">{a.sensor_id}</p>
-                  <p className="text-xs text-gray-500">{a.description}</p>
+            {detectedAnomalies.map((a, i) => {
+              const style = getSensorStyle(a.sensor_type);
+              const Icon = style.icon;
+              return (
+                <div
+                  key={i}
+                  className={`flex items-center justify-between p-3.5 rounded-xl ${style.bg} border ${style.border}`}
+                >
+                  <div className="flex items-center gap-3">
+                    <div className={`p-2 rounded-lg ${style.bg}`}>
+                      <Icon size={16} className={style.color} />
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <p className={`text-sm font-semibold ${style.color}`}>{a.sensor_id}</p>
+                        <span className={`text-[9px] px-1.5 py-0.5 rounded-full font-semibold bg-red-500 text-white uppercase`}>
+                          anomaly
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-gray-500 mt-0.5">
+                        {style.label} · {ZONE_SHORT[a.zone_id] || a.zone_id} — {a.description}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <p className={`text-base font-bold ${style.color}`}>
+                      {a.current_value?.toFixed(2)}
+                    </p>
+                    <p className="text-[10px] text-gray-500">
+                      Expected: {a.expected_min?.toFixed(1)} — {a.expected_max?.toFixed(1)}
+                    </p>
+                  </div>
                 </div>
-                <div className="text-right">
-                  <p className="text-sm font-bold text-red-400">
-                    {a.current_value?.toFixed(2)}
-                  </p>
-                  <p className="text-[10px] text-gray-500">
-                    Expected: {a.expected_min?.toFixed(1)} — {a.expected_max?.toFixed(1)}
-                  </p>
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
 
-        {/* Gemini AI analysis of anomalies */}
+        {/* Gemini AI analysis */}
         {anomalyResult?.ai_analysis && (
           <div className="p-4 rounded-xl bg-greenhouse-500/5 border border-greenhouse-500/20">
             <div className="flex items-center gap-2 mb-2">
@@ -171,29 +227,45 @@ export default function AnalyticsPage() {
           </div>
         )}
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-          {normalSensors.map((a, i) => (
-            <div
-              key={i}
-              className="flex items-center justify-between p-3 rounded-lg bg-gray-900/50 border border-gray-800"
-            >
-              <div>
-                <p className="text-sm text-gray-300">{a.sensor_id}</p>
-                <p className="text-[10px] text-gray-500">
-                  {a.sensor_type} • {a.zone_id}
-                </p>
-              </div>
-              <div className="text-right">
-                <p className="text-sm font-medium text-greenhouse-400">
-                  {a.current_value?.toFixed(2)}
-                </p>
-                <p className="text-[10px] text-gray-500">
-                  Score: {a.anomaly_score?.toFixed(3)}
-                </p>
-              </div>
+        {/* Normal sensors - color-coded grid */}
+        {normalSensors.length > 0 && (
+          <div>
+            <p className="text-xs text-gray-500 font-medium mb-2 flex items-center gap-1.5">
+              <CheckCircle size={12} className="text-greenhouse-400" />
+              Normal Sensors ({normalSensors.length})
+            </p>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+              {normalSensors.map((a, i) => {
+                const style = getSensorStyle(a.sensor_type);
+                const Icon = style.icon;
+                return (
+                  <div
+                    key={i}
+                    className={`flex items-center justify-between p-3 rounded-xl ${style.bg} border ${style.border}`}
+                  >
+                    <div className="flex items-center gap-2.5">
+                      <Icon size={14} className={style.color} />
+                      <div>
+                        <p className="text-sm text-gray-300">{a.sensor_id}</p>
+                        <p className="text-[10px] text-gray-500">
+                          {style.label} · {ZONE_SHORT[a.zone_id] || a.zone_id}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <p className={`text-sm font-medium ${style.color}`}>
+                        {a.current_value?.toFixed(2)}
+                      </p>
+                      <p className="text-[10px] text-gray-500">
+                        Score: {a.anomaly_score?.toFixed(3)}
+                      </p>
+                    </div>
+                  </div>
+                );
+              })}
             </div>
-          ))}
-        </div>
+          </div>
+        )}
       </div>
     </div>
   );

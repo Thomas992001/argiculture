@@ -88,8 +88,8 @@ async def check_anomalies():
     anomalies = []
 
     for key, reading in all_latest.items():
-        history = tsdb.get_recent_values(
-            reading.zone_id, reading.sensor_type.value, count=100
+        history = tsdb.get_recent_values_for_sensor(
+            reading.zone_id, reading.sensor_id, count=100
         )
         if len(history) < 10:
             continue

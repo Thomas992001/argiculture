@@ -75,6 +75,7 @@ class RateOfChangeDetector:
             "ph": 0.3,
             "water_temperature": 1.0,
             "water_level": 3.0,
+            "light": 5000.0,
             "light_intensity": 5000.0,
         }
 

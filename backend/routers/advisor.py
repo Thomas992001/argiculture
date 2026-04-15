@@ -283,7 +283,7 @@ async def forecast_soil_conditions(horizon_hours: int = Query(4, ge=1, le=24)):
 
     history_lines = ["## Recent Sensor Statistics"]
     for zone, sensor in [
-        ("zone_air", "humidity"),
+        ("zone_air", "humidity"), ("zone_air", "temperature"), ("zone_air", "light"),
         ("zone_bed_a", "soil_moisture"), ("zone_bed_a", "soil_temperature"), ("zone_bed_a", "soil_ph"),
         ("zone_bed_b", "soil_moisture"), ("zone_bed_b", "soil_temperature"), ("zone_bed_b", "soil_ph"),
         ("zone_bed_c", "soil_moisture"), ("zone_bed_c", "soil_temperature"), ("zone_bed_c", "soil_ph"),
@@ -316,17 +316,22 @@ async def forecast_soil_conditions(horizon_hours: int = Query(4, ge=1, le=24)):
 
 @router.get("/vpd")
 async def get_vpd_info():
-    """Get current VPD calculation using avg soil temp as proxy."""
-    latest = tsdb.get_all_latest()
-    soil_temps = [
-        latest.get(f"zone_bed_{bed}:soil_temperature")
-        for bed in ("a", "b", "c")
-    ]
-    valid_temps = [r for r in soil_temps if r is not None]
-    rh_r = latest.get("zone_air:humidity")
-    if not valid_temps or not rh_r:
+    """Get current VPD calculation — prefers air temp, falls back to avg soil temp."""
+    air_temp_r = tsdb.get_latest("zone_air", "temperature")
+    rh_r = tsdb.get_latest("zone_air", "humidity")
+    if air_temp_r:
+        temp = air_temp_r.value
+    else:
+        soil_temps = [
+            tsdb.get_latest(f"zone_bed_{bed}", "soil_temperature")
+            for bed in ("a", "b", "c")
+        ]
+        valid_temps = [r for r in soil_temps if r is not None]
+        if not valid_temps:
+            return {"error": "Sensor data not available"}
+        temp = sum(r.value for r in valid_temps) / len(valid_temps)
+    if not rh_r:
         return {"error": "Sensor data not available"}
-    temp = sum(r.value for r in valid_temps) / len(valid_temps)
     rh = rh_r.value
     vpd = calculate_vpd(temp, rh)
     dp = calculate_dew_point(temp, rh)

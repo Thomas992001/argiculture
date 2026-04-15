@@ -15,6 +15,7 @@ from enum import Enum
 
 from backend.database import tsdb
 from backend.services.twin_state import twin_state
+from backend.services.weather_service import weather_service
 from backend.models import SensorType, AlertSeverity
 
 
@@ -145,6 +146,8 @@ class AIAdvisor:
         result = {}
         for key, reading in latest.items():
             result[key] = reading.value
+            legacy = f"{reading.zone_id}:{reading.sensor_type.value}"
+            result[legacy] = reading.value
         return result
 
     def _get_trend_for(self, zone_id: str, sensor_type: str) -> str:
@@ -180,6 +183,7 @@ class AIAdvisor:
         insights.extend(self._analyze_vpd(readings, crop))
         insights.extend(self._analyze_irrigation(readings, crop))
         insights.extend(self._analyze_efficiency(readings))
+        insights.extend(self._analyze_weather(readings, crop))
 
         insights.sort(key=lambda i: {
             "critical": 0, "high": 1, "medium": 2, "low": 3, "info": 4
@@ -190,6 +194,8 @@ class AIAdvisor:
     def _analyze_climate(self, readings: Dict, crop: CropProfile) -> List[Insight]:
         results = []
         rh = readings.get("zone_air:humidity")
+        air_temp = readings.get("zone_air:temperature")
+        light = readings.get("zone_air:light")
 
         if rh is not None:
             if rh > crop.rh_max:
@@ -198,7 +204,7 @@ class AIAdvisor:
                     message=f"Humidity is {rh:.0f}%, above {crop.rh_max}% max for {crop.name}. "
                             f"High humidity promotes fungal diseases like Botrytis and powdery mildew.",
                     priority=InsightPriority.MEDIUM, category="climate",
-                    action="Increase ventilation. Reduce misting. Improve air circulation.",
+                    action="Increase ventilation with exhaust fan. Reduce misting. Improve air circulation.",
                     icon="droplets", metric_name="humidity", metric_value=rh,
                 ))
             elif rh < crop.rh_min:
@@ -211,16 +217,69 @@ class AIAdvisor:
                     icon="droplets", metric_name="humidity", metric_value=rh,
                 ))
 
+        if air_temp is not None:
+            if air_temp > crop.temp_max:
+                severity = InsightPriority.HIGH if air_temp > crop.temp_max + 5 else InsightPriority.MEDIUM
+                results.append(Insight(
+                    title="Air Temperature Too High",
+                    message=f"Air temperature is {air_temp:.1f}°C, above {crop.temp_max}°C max for {crop.name}. "
+                            f"Heat stress reduces photosynthesis and can cause flower drop.",
+                    priority=severity, category="climate",
+                    action="Increase ventilation and shading. Consider evaporative cooling.",
+                    icon="thermometer", metric_name="temperature", metric_value=air_temp,
+                ))
+            elif air_temp < crop.temp_min:
+                severity = InsightPriority.HIGH if air_temp < crop.temp_min - 5 else InsightPriority.MEDIUM
+                results.append(Insight(
+                    title="Air Temperature Too Low",
+                    message=f"Air temperature is {air_temp:.1f}°C, below {crop.temp_min}°C min for {crop.name}. "
+                            f"Cold stress slows growth and may damage sensitive tissues.",
+                    priority=severity, category="climate",
+                    action="Close ventilation openings. Turn on heating if available.",
+                    icon="thermometer", metric_name="temperature", metric_value=air_temp,
+                ))
+            else:
+                results.append(Insight(
+                    title="Air Temperature Normal",
+                    message=f"Air temperature is {air_temp:.1f}°C, within the ideal range of "
+                            f"{crop.temp_min}-{crop.temp_max}°C for {crop.name}.",
+                    priority=InsightPriority.INFO, category="climate", icon="thermometer",
+                    metric_name="temperature", metric_value=air_temp,
+                ))
+
+        if light is not None:
+            if light < 2000:
+                results.append(Insight(
+                    title="Light Level Too Low",
+                    message=f"Light level is {light:.0f} lux, well below the minimum for healthy growth. "
+                            f"Insufficient light reduces photosynthesis and causes etiolation.",
+                    priority=InsightPriority.MEDIUM, category="climate",
+                    action="Check if it's nighttime. Consider supplemental grow lights.",
+                    icon="sun", metric_name="light", metric_value=light,
+                ))
+            elif light > 60000:
+                results.append(Insight(
+                    title="Light Level Very High",
+                    message=f"Light level is {light:.0f} lux. Excess light can cause leaf bleaching "
+                            f"and heat stress, especially on young or sensitive plants.",
+                    priority=InsightPriority.LOW, category="climate",
+                    action="Deploy shade cloth if available. Monitor leaf temperature.",
+                    icon="sun", metric_name="light", metric_value=light,
+                ))
+
         return results
 
     def _analyze_vpd(self, readings: Dict, crop: CropProfile) -> List[Insight]:
         results = []
-        soil_temps = [
-            readings.get(f"zone_bed_{bed}:soil_temperature")
-            for bed in ("a", "b", "c")
-        ]
-        valid_temps = [t for t in soil_temps if t is not None]
-        temp = sum(valid_temps) / len(valid_temps) if valid_temps else None
+        air_temp = readings.get("zone_air:temperature")
+        if air_temp is None:
+            soil_temps = [
+                readings.get(f"zone_bed_{bed}:soil_temperature")
+                for bed in ("a", "b", "c")
+            ]
+            valid_temps = [t for t in soil_temps if t is not None]
+            air_temp = sum(valid_temps) / len(valid_temps) if valid_temps else None
+        temp = air_temp
         rh = readings.get("zone_air:humidity")
 
         if temp is None or rh is None:
@@ -328,6 +387,59 @@ class AIAdvisor:
 
         return results
 
+    def _analyze_weather(self, readings: Dict, crop: CropProfile) -> List[Insight]:
+        """Weather-informed insights using outdoor conditions and forecast."""
+        results = []
+        try:
+            weather = weather_service.get_weather()
+            if weather.get("error"):
+                return results
+
+            current = weather.get("current", {}) or {}
+            forecast = weather.get("next_12h", {}) or {}
+
+            outdoor_temp = current.get("temp_c")
+            outdoor_humidity = current.get("humidity_pct")
+            condition = current.get("condition", "")
+            max_rain_prob = forecast.get("max_rain_prob_pct", 0)
+            total_rain = forecast.get("total_rain_mm", 0)
+
+            if outdoor_temp is not None and outdoor_temp > 35:
+                results.append(Insight(
+                    title="Extreme Outdoor Heat",
+                    message=f"Outdoor temperature is {outdoor_temp}°C. This will raise greenhouse "
+                            f"temperatures. Expect increased cooling demand and water consumption.",
+                    priority=InsightPriority.MEDIUM, category="climate",
+                    action="Maximize ventilation and shade. Monitor indoor temperature closely.",
+                    icon="thermometer", metric_name="outdoor_temp", metric_value=outdoor_temp,
+                ))
+
+            if max_rain_prob > 70:
+                results.append(Insight(
+                    title="Rain Expected — Adjust Irrigation",
+                    message=f"Rain probability is {max_rain_prob}% in the next 12 hours "
+                            f"(expected {total_rain} mm). Outdoor humidity will rise, affecting indoor conditions.",
+                    priority=InsightPriority.LOW, category="irrigation",
+                    action="Reduce irrigation schedule. Close vents if rain is heavy.",
+                    icon="droplets", metric_name="rain_probability", metric_value=max_rain_prob,
+                ))
+
+            cloud_cover = current.get("cloud_cover_pct")
+            light = readings.get("zone_air:light")
+            if cloud_cover is not None and cloud_cover > 80 and light is not None and light < 5000:
+                results.append(Insight(
+                    title="Overcast — Low Natural Light",
+                    message=f"Cloud cover is {cloud_cover}% and indoor light is only {light:.0f} lux. "
+                            f"Plants may not receive enough photosynthetically active radiation.",
+                    priority=InsightPriority.LOW, category="climate",
+                    action="Consider turning on supplemental grow lights.",
+                    icon="sun", metric_name="light", metric_value=light,
+                ))
+        except Exception:
+            pass
+
+        return results
+
     # ── Summary Generation ──
 
     def generate_summary(self) -> str:
@@ -336,12 +448,21 @@ class AIAdvisor:
         crop = self.get_crop_profile()
 
         rh = readings.get("zone_air:humidity")
+        air_temp = readings.get("zone_air:temperature")
+        light = readings.get("zone_air:light")
 
         parts = []
         parts.append(f"Current crop profile: {crop.name}.")
 
+        air_parts = []
+        if air_temp is not None:
+            air_parts.append(f"temperature {air_temp:.1f}°C")
         if rh is not None:
-            parts.append(f"Air humidity is {rh:.0f}%.")
+            air_parts.append(f"humidity {rh:.0f}%")
+        if light is not None:
+            air_parts.append(f"light {light:.0f} lux")
+        if air_parts:
+            parts.append(f"Greenhouse air: {', '.join(air_parts)}.")
 
         for zone_id, label in [("zone_bed_a", "Substrate A"), ("zone_bed_b", "Substrate B"), ("zone_bed_c", "Substrate C")]:
             moisture = readings.get(f"{zone_id}:soil_moisture")
@@ -357,6 +478,17 @@ class AIAdvisor:
                 bed_parts.append(f"pH {soil_ph:.1f}")
             if bed_parts:
                 parts.append(f"{label}: {', '.join(bed_parts)}.")
+
+        try:
+            weather = weather_service.get_weather()
+            cur = weather.get("current", {}) or {}
+            if cur and cur.get("temp_c") is not None:
+                parts.append(
+                    f"Outdoor: {cur.get('condition', 'N/A')}, "
+                    f"{cur['temp_c']}°C, {cur.get('humidity_pct', 'N/A')}% RH."
+                )
+        except Exception:
+            pass
 
         alerts = twin_state.get_alerts()
         if alerts:

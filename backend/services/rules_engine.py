@@ -31,6 +31,12 @@ class RuleViolation:
 DEFAULT_RULES = [
     Rule("Humidity", SensorType.HUMIDITY, "zone_air",
          warning_low=40.0, warning_high=85.0, critical_low=30.0, critical_high=95.0),
+    Rule("Air Temperature", SensorType.TEMPERATURE, "zone_air",
+         warning_low=15.0, warning_high=32.0, critical_low=10.0, critical_high=38.0),
+    Rule("Light Level", SensorType.LIGHT, "zone_air",
+         warning_low=2000.0, warning_high=80000.0, critical_low=500.0, critical_high=100000.0),
+    Rule("Light Intensity", SensorType.LIGHT_INTENSITY, "zone_air",
+         warning_low=2000.0, warning_high=80000.0, critical_low=500.0, critical_high=100000.0),
     Rule("Soil Temperature A", SensorType.SOIL_TEMPERATURE, "zone_bed_a",
          warning_low=15.0, warning_high=30.0, critical_low=10.0, critical_high=35.0),
     Rule("Soil pH A", SensorType.SOIL_PH, "zone_bed_a",

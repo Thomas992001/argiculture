@@ -3,6 +3,7 @@ import {
   Droplets,
   Beaker,
   Gauge,
+  Sun,
   ArrowUp,
   ArrowDown,
 } from "lucide-react";
@@ -15,6 +16,30 @@ const SENSOR_CONFIG = {
     border: "border-blue-400/20",
     unit: "%",
     label: "Air Humidity",
+  },
+  temperature: {
+    icon: Thermometer,
+    color: "text-red-400",
+    bg: "bg-red-400/10",
+    border: "border-red-400/20",
+    unit: "°C",
+    label: "Air Temperature",
+  },
+  light: {
+    icon: Sun,
+    color: "text-yellow-400",
+    bg: "bg-yellow-400/10",
+    border: "border-yellow-400/20",
+    unit: "lux",
+    label: "Light Level",
+  },
+  light_intensity: {
+    icon: Sun,
+    color: "text-yellow-400",
+    bg: "bg-yellow-400/10",
+    border: "border-yellow-400/20",
+    unit: "lux",
+    label: "Light Level",
   },
   soil_temperature: {
     icon: Thermometer,

@@ -1,4 +1,5 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
+import { useSearchParams } from "react-router-dom";
 import { Brain, Zap } from "lucide-react";
 import { api } from "../api/client";
 import { useRTDBData } from "../hooks/useRTDBData";
@@ -13,6 +14,8 @@ const ZONES = [
 const SENSOR_TYPES_BY_ZONE = {
   zone_air: [
     { value: "humidity", label: "Air Humidity" },
+    { value: "temperature", label: "Air Temperature" },
+    { value: "light", label: "Light Level" },
   ],
   zone_bed: [
     { value: "soil_temperature", label: "Soil Temperature" },
@@ -27,22 +30,90 @@ const BED_ZONES = [
   { value: "zone_bed_c", label: "Substrate C", color: "#f59e0b" },
 ];
 
+/** Firebase / RTDB often uses `light_intensity`; app treats it as `light` for display. */
+function normalizeLightSensorType(type) {
+  return type === "light_intensity" ? "light" : type;
+}
+
+function readingSensorType(r, key) {
+  if (r && typeof r === "object" && r.sensor_type != null) {
+    const st =
+      typeof r.sensor_type === "string" ? r.sensor_type : r.sensor_type.value;
+    return normalizeLightSensorType(st);
+  }
+  return normalizeLightSensorType(key.split(":")[1] || "");
+}
+
+function buildGreenhouseZoneReadings(sensorData, allowedTypes) {
+  const rows = Object.entries(sensorData)
+    .filter(([key, r]) => {
+      const [zone] = key.split(":");
+      if (zone !== "zone_air") return false;
+      if (!r || typeof r !== "object") return false;
+      const sensorType = readingSensorType(r, key);
+      if (!sensorType) return false;
+      return allowedTypes.includes(sensorType) || sensorType === "light_intensity";
+    })
+    .map(([key, r]) => ({
+      key,
+      sensorType: readingSensorType(r, key),
+      ...r,
+    }));
+
+  const bySensorId = new Map();
+  for (const row of rows) {
+    const sid = row.sensor_id || row.key;
+    if (bySensorId.has(sid)) continue;
+    bySensorId.set(sid, row);
+  }
+  return Array.from(bySensorId.values());
+}
+
 export default function SensorsPage() {
-  const [selectedZone, setSelectedZone] = useState("zone_air");
-  const [selectedSensor, setSelectedSensor] = useState("humidity");
+  const [searchParams] = useSearchParams();
+  const initialZone = searchParams.get("zone") || "zone_air";
+  const initialSensor = searchParams.get("sensor") || "humidity";
+
+  const [selectedZone, setSelectedZone] = useState(initialZone);
+  const [selectedSensor, setSelectedSensor] = useState(initialSensor);
   const [history, setHistory] = useState([]);
   const [bedHistories, setBedHistories] = useState({});
   const [stats, setStats] = useState(null);
   const [sensorData, setSensorData] = useState({});
   const [timeWindow, setTimeWindow] = useState(30);
+  const [highlightSensor, setHighlightSensor] = useState(null);
   const { data: rtdbData } = useRTDBData();
+  const highlightRef = useRef(null);
 
   const isSubstrateBed = selectedZone === "zone_bed";
   const sensorTypes = SENSOR_TYPES_BY_ZONE[selectedZone] || [];
 
+  // Handle navigation with flash highlight
+  useEffect(() => {
+    const sensorParam = searchParams.get("sensor");
+    const zoneParam = searchParams.get("zone");
+    if (sensorParam && zoneParam) {
+      setSelectedZone(zoneParam);
+      setSelectedSensor(sensorParam);
+      setHighlightSensor(sensorParam);
+
+      const timer = setTimeout(() => {
+        if (highlightRef.current) {
+          highlightRef.current.scrollIntoView({ behavior: "smooth", block: "center" });
+        }
+      }, 300);
+
+      const clearTimer = setTimeout(() => setHighlightSensor(null), 2000);
+      return () => {
+        clearTimeout(timer);
+        clearTimeout(clearTimer);
+      };
+    }
+  }, [searchParams]);
+
   useEffect(() => {
     const firstType = sensorTypes[0]?.value;
-    if (firstType) setSelectedSensor(firstType);
+    if (firstType && !searchParams.get("sensor")) setSelectedSensor(firstType);
   }, [selectedZone]);
 
   const fetchHistory = useCallback(async () => {
@@ -65,10 +136,37 @@ export default function SensorsPage() {
         );
         setStats(statsData);
       } else {
-        const [histData, statsData] = await Promise.all([
-          api.getSensorHistory(selectedZone, selectedSensor, timeWindow),
-          api.getStatistics(selectedZone, selectedSensor),
-        ]);
+        let histData = await api.getSensorHistory(
+          selectedZone,
+          selectedSensor,
+          timeWindow
+        );
+        let statsData = await api.getStatistics(
+          selectedZone,
+          selectedSensor
+        );
+        if (
+          selectedSensor === "light" &&
+          selectedZone === "zone_air" &&
+          (!histData || histData.length === 0)
+        ) {
+          try {
+            const [h2, s2] = await Promise.all([
+              api.getSensorHistory(
+                selectedZone,
+                "light_intensity",
+                timeWindow
+              ),
+              api.getStatistics(selectedZone, "light_intensity"),
+            ]);
+            if (h2 && h2.length > 0) {
+              histData = h2;
+              statsData = s2;
+            }
+          } catch {
+            // keep primary result
+          }
+        }
         setHistory(histData);
         setStats(statsData);
       }
@@ -83,7 +181,6 @@ export default function SensorsPage() {
     return () => clearInterval(interval);
   }, [fetchHistory]);
 
-  // Sensor data comes exclusively from RTDB
   useEffect(() => {
     if (rtdbData && Object.keys(rtdbData).length > 0) {
       setSensorData(rtdbData);
@@ -92,16 +189,18 @@ export default function SensorsPage() {
 
   const allowedTypes = sensorTypes.map(s => s.value);
 
-  const zoneReadings = Object.entries(sensorData)
-    .filter(([key]) => {
-      const [zone, type] = key.split(":");
-      return zone === selectedZone && allowedTypes.includes(type);
-    })
-    .map(([key, r]) => ({
-      key,
-      sensorType: key.split(":")[1],
-      ...r,
-    }));
+  const zoneReadings = isSubstrateBed
+    ? Object.entries(sensorData)
+        .filter(([key]) => {
+          const [zone, type] = key.split(":");
+          return zone === selectedZone && allowedTypes.includes(type);
+        })
+        .map(([key, r]) => ({
+          key,
+          sensorType: key.split(":")[1],
+          ...r,
+        }))
+    : buildGreenhouseZoneReadings(sensorData, allowedTypes);
 
   const bedSeries = isSubstrateBed
     ? BED_ZONES.map((bed) => ({
@@ -168,10 +267,10 @@ export default function SensorsPage() {
         <div className="space-y-4">
           {BED_ZONES.map((bed) => {
             const readings = Object.entries(sensorData)
-              .filter(([key]) => key.startsWith(bed.value))
+              .filter(([key]) => key.startsWith(`${bed.value}:`))
               .map(([key, r]) => ({
                 key,
-                sensorType: key.split(":")[1],
+                sensorType: readingSensorType(r, key),
                 ...r,
               }));
             return (
@@ -184,14 +283,22 @@ export default function SensorsPage() {
                   {bed.label}
                 </h3>
                 <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-                  {readings.map((r) => (
-                    <SensorCard
-                      key={r.key}
-                      sensorType={r.sensorType}
-                      value={r.value}
-                      quality={r.quality}
-                    />
-                  ))}
+                  {readings.map((r) => {
+                    const isTarget = highlightSensor === r.sensorType;
+                    return (
+                      <div
+                        key={r.key}
+                        ref={isTarget ? highlightRef : null}
+                        className={isTarget ? "animate-flash-highlight rounded-xl" : ""}
+                      >
+                        <SensorCard
+                          sensorType={r.sensorType}
+                          value={r.value}
+                          quality={r.quality}
+                        />
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
             );
@@ -199,14 +306,22 @@ export default function SensorsPage() {
         </div>
       ) : (
         <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-          {zoneReadings.map((r) => (
-            <SensorCard
-              key={r.key}
-              sensorType={r.sensorType}
-              value={r.value}
-              quality={r.quality}
-            />
-          ))}
+          {zoneReadings.map((r) => {
+            const isTarget = highlightSensor === r.sensorType;
+            return (
+              <div
+                key={r.key}
+                ref={isTarget ? highlightRef : null}
+                className={isTarget ? "animate-flash-highlight rounded-xl" : ""}
+              >
+                <SensorCard
+                  sensorType={r.sensorType}
+                  value={r.value}
+                  quality={r.quality}
+                />
+              </div>
+            );
+          })}
         </div>
       )}
 

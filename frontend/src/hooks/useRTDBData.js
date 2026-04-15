@@ -29,7 +29,27 @@ export function useRTDBData() {
         onValue(sensorRef, (snapshot) => {
           const val = snapshot.val();
           if (val) {
-            setData(val);
+            const normalized = { ...val };
+            for (const reading of Object.values(val)) {
+              if (
+                reading &&
+                typeof reading === "object" &&
+                reading.zone_id &&
+                reading.sensor_type != null
+              ) {
+                const st =
+                  typeof reading.sensor_type === "string"
+                    ? reading.sensor_type
+                    : reading.sensor_type.value;
+                normalized[`${reading.zone_id}:${st}`] = reading;
+              }
+            }
+            const li = normalized["zone_air:light_intensity"];
+            const lg = normalized["zone_air:light"];
+            if (li?.value != null && (lg == null || lg?.value == null)) {
+              normalized["zone_air:light"] = li;
+            }
+            setData(normalized);
           }
           setLoading(false);
         }, (err) => {

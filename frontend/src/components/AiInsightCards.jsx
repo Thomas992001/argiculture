@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
+import { useNavigate } from "react-router-dom";
 import {
   Sparkles,
   Thermometer,
@@ -14,6 +15,7 @@ import {
   AlertCircle,
   Info,
   ChevronRight,
+  BarChart3,
 } from "lucide-react";
 import { api } from "../api/client";
 
@@ -68,39 +70,70 @@ const PRIORITY_STYLES = {
   },
 };
 
+const METRIC_TO_SENSOR_TYPE = {
+  humidity: "humidity",
+  temperature: "temperature",
+  light: "light",
+  light_intensity: "light",
+  soil_temperature: "soil_temperature",
+  soil_moisture: "soil_moisture",
+  soil_ph: "soil_ph",
+  vpd: "humidity",
+  outdoor_temp: "temperature",
+  rain_probability: "humidity",
+};
+
 function InsightCard({ insight, compact = false }) {
   const [expanded, setExpanded] = useState(false);
+  const navigate = useNavigate();
   const style = PRIORITY_STYLES[insight.priority] || PRIORITY_STYLES.info;
   const Icon = ICON_MAP[insight.icon] || Info;
+
+  const handleViewData = (e) => {
+    e.stopPropagation();
+    const sensorType = METRIC_TO_SENSOR_TYPE[insight.metric_name] || insight.metric_name;
+    const isSoilType = sensorType?.startsWith("soil_");
+    const zone = isSoilType ? "zone_bed" : "zone_air";
+    navigate(`/sensors?zone=${zone}&sensor=${sensorType || "humidity"}`);
+  };
 
   if (compact) {
     return (
       <div
-        className={`flex items-center gap-3 p-3 rounded-lg border ${style.bg} ${style.border} cursor-pointer hover:brightness-110 transition-all`}
+        className={`p-3 rounded-lg border ${style.bg} ${style.border} cursor-pointer hover:brightness-110 transition-all`}
         onClick={() => setExpanded(!expanded)}
       >
-        <Icon size={16} className={`${style.text} shrink-0`} />
-        <div className="flex-1 min-w-0">
-          <p className={`text-sm font-medium ${style.text} truncate`}>
-            {insight.title}
-          </p>
-          {expanded && (
-            <div className="mt-1.5 animate-slide-up">
-              <p className="text-xs text-gray-400">{insight.message}</p>
-              {insight.action && (
-                <p className="text-xs text-greenhouse-400 mt-1 flex items-center gap-1">
-                  <ChevronRight size={10} />
-                  {insight.action}
-                </p>
-              )}
-            </div>
-          )}
+        <div className="flex items-center gap-3">
+          <Icon size={16} className={`${style.text} shrink-0`} />
+          <div className="flex-1 min-w-0">
+            <p className={`text-sm font-medium ${style.text} truncate`}>
+              {insight.title}
+            </p>
+          </div>
+          <span
+            className={`text-[9px] px-1.5 py-0.5 rounded-full font-semibold ${style.badge} ${style.badgeText} shrink-0 uppercase`}
+          >
+            {insight.priority}
+          </span>
         </div>
-        <span
-          className={`text-[9px] px-1.5 py-0.5 rounded-full font-semibold ${style.badge} ${style.badgeText} shrink-0 uppercase`}
-        >
-          {insight.priority}
-        </span>
+        {expanded && (
+          <div className="mt-2 animate-slide-up">
+            <p className="text-xs text-gray-400">{insight.message}</p>
+            {insight.action && (
+              <p className="text-xs text-greenhouse-400 mt-1.5 flex items-center gap-1">
+                <ChevronRight size={10} />
+                {insight.action}
+              </p>
+            )}
+            <button
+              onClick={handleViewData}
+              className="mt-2 inline-flex items-center gap-1.5 text-[11px] font-medium px-2.5 py-1 rounded-md bg-gray-800/80 border border-gray-700/50 text-greenhouse-400 hover:bg-gray-700/80 transition-colors"
+            >
+              <BarChart3 size={12} />
+              View Data
+            </button>
+          </div>
+        )}
       </div>
     );
   }
@@ -133,6 +166,13 @@ function InsightCard({ insight, compact = false }) {
               <p className="text-xs text-greenhouse-300">{insight.action}</p>
             </div>
           )}
+          <button
+            onClick={handleViewData}
+            className="mt-2.5 inline-flex items-center gap-1.5 text-[11px] font-medium px-2.5 py-1 rounded-md bg-gray-800/80 border border-gray-700/50 text-greenhouse-400 hover:bg-gray-700/80 transition-colors"
+          >
+            <BarChart3 size={12} />
+            View Data
+          </button>
         </div>
       </div>
     </div>

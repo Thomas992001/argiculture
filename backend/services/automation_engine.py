@@ -158,14 +158,8 @@ class AutomationEngine:
         return None
 
     def _set_pump(self, pump_id: str, state: ActuatorState):
-        # Update twin state (canonical)
+        # twin_state.set_actuator forwards to the simulator via bind_actuator_sink
         twin_state.set_actuator(ActuatorCommand(actuator_id=pump_id, command=state))
-        # Update simulator so physical effects propagate
-        if self._simulator_setter:
-            try:
-                self._simulator_setter(pump_id, state)
-            except Exception as e:
-                print(f"[AutomationEngine] simulator setter error: {e}")
 
     def _log(self, pump_id: str, event_type: str, message: str):
         entry = {

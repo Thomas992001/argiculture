@@ -110,8 +110,8 @@ def on_sensor_data(readings: List[SensorReading]):
 async def lifespan(app: FastAPI):
     simulator = GreenhouseSimulator()
     simulator.on_data(on_sensor_data)
-    # Let the automation engine drive simulator actuators directly
-    automation_engine.bind_simulator(simulator.set_actuator)
+    # Firestore/UI and automation both go through twin_state → simulator
+    twin_state.bind_actuator_sink(simulator.set_actuator)
     app_state["simulator"] = simulator
     app_state["start_time"] = time.time()
 

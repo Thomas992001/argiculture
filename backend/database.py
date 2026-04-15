@@ -65,9 +65,10 @@ class TimeSeriesStore:
         self.write_batch([reading])
 
     def write_batch(self, readings: List[SensorReading]):
+        # One series per physical sensor so history length matches tick rate for all types.
         with self._lock:
             for reading in readings:
-                key = f"{reading.zone_id}:{reading.sensor_type.value}"
+                key = f"{reading.zone_id}:{reading.sensor_id}"
                 self._series[key].append(reading)
                 self._latest[key] = reading
             
@@ -88,15 +89,16 @@ class TimeSeriesStore:
         try:
             # 1. Update Aggregate 'Latest' Snapshot (Highly efficient for Frontend)
             latest_ref = root_ref.child(f"users/{uid}/live/latest")
+            # RTDB keys: zone:sensor_id (unique per device); last in batch wins for same id.
             snapshot = {
-                f"{r.zone_id}:{r.sensor_type.value}": r.model_dump(mode='json')
+                f"{r.zone_id}:{r.sensor_id}": r.model_dump(mode='json')
                 for r in readings
             }
             latest_ref.update(snapshot)
 
             # 2. Update History (More expensive, but now async)
             for r in readings:
-                path = f"users/{uid}/live/history/{r.zone_id}/{r.sensor_type.value}"
+                path = f"users/{uid}/live/history/{r.zone_id}/{r.sensor_id}"
                 history_ref = root_ref.child(path)
                 
                 # Push new entry
@@ -108,6 +110,22 @@ class TimeSeriesStore:
         except Exception as e:
             print(f"Error in background cloud sync: {e}")
 
+    def _merge_readings_zone_type(
+        self, zone_id: str, sensor_type: str
+    ) -> List[SensorReading]:
+        """All points for sensors of this type in the zone, sorted by time."""
+        prefix = f"{zone_id}:"
+        with self._lock:
+            merged: List[SensorReading] = []
+            for key, deq in self._series.items():
+                if not key.startswith(prefix) or not deq:
+                    continue
+                if deq[-1].sensor_type.value != sensor_type:
+                    continue
+                merged.extend(list(deq))
+        merged.sort(key=lambda r: r.timestamp)
+        return merged
+
     def query(
         self,
         zone_id: str,
@@ -116,9 +134,7 @@ class TimeSeriesStore:
         end_time: Optional[datetime] = None,
         limit: int = 500,
     ) -> List[SensorReading]:
-        key = f"{zone_id}:{sensor_type}"
-        with self._lock:
-            data = list(self._series.get(key, []))
+        data = self._merge_readings_zone_type(zone_id, sensor_type)
 
         if start_time:
             data = [r for r in data if r.timestamp >= start_time]
@@ -128,9 +144,16 @@ class TimeSeriesStore:
         return data[-limit:]
 
     def get_latest(self, zone_id: str, sensor_type: str) -> Optional[SensorReading]:
-        key = f"{zone_id}:{sensor_type}"
+        """Most recent reading among sensors of this type in the zone."""
         with self._lock:
-            return self._latest.get(key)
+            candidates = [
+                r
+                for r in self._latest.values()
+                if r.zone_id == zone_id and r.sensor_type.value == sensor_type
+            ]
+        if not candidates:
+            return None
+        return max(candidates, key=lambda r: r.timestamp)
 
     def get_all_latest(self) -> Dict[str, SensorReading]:
         with self._lock:
@@ -143,7 +166,14 @@ class TimeSeriesStore:
     def get_recent_values(
         self, zone_id: str, sensor_type: str, count: int = 100
     ) -> List[Tuple[datetime, float]]:
-        key = f"{zone_id}:{sensor_type}"
+        merged = self._merge_readings_zone_type(zone_id, sensor_type)
+        tail = merged[-count:]
+        return [(r.timestamp, r.value) for r in tail]
+
+    def get_recent_values_for_sensor(
+        self, zone_id: str, sensor_id: str, count: int = 100
+    ) -> List[Tuple[datetime, float]]:
+        key = f"{zone_id}:{sensor_id}"
         with self._lock:
             data = list(self._series.get(key, []))
         return [(r.timestamp, r.value) for r in data[-count:]]

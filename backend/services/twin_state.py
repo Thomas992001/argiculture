@@ -5,7 +5,7 @@ Maintains the live virtual representation of the greenhouse.
 
 import threading
 from datetime import datetime
-from typing import Dict, List, Optional
+from typing import Callable, Dict, List, Optional
 
 from backend.models import (
     Zone, ZoneType, Actuator, ActuatorState, ActuatorCommand,
@@ -24,6 +24,7 @@ class TwinStateManager:
         self._alerts: List[Alert] = []
         self._alert_counter = 0
         self._firestore_watch = None
+        self._actuator_sink: Optional[Callable[[str, ActuatorState], None]] = None
 
         self._initialize_zones()
         self._initialize_actuators()
@@ -53,11 +54,15 @@ class TwinStateManager:
         self._firestore_watch = doc_ref.on_snapshot(on_snapshot)
         print(f"DEBUG: Firestore Listener started for {doc_ref.path}")
 
+    def bind_actuator_sink(self, sink: Callable[[str, ActuatorState], None]):
+        """Notify simulator (or hardware) whenever a pump actuator changes."""
+        self._actuator_sink = sink
+
     def _initialize_zones(self):
         zone_defs = [
             ("zone_air", "Greenhouse Condition", ZoneType.GREENHOUSE_AIR,
              ["air_rh_1", "air_rh_2"],
-             ["pump_main", "pump_nutrient"]),
+             []),
             ("zone_bed_a", "Substrate A", ZoneType.SUBSTRATE_BED_A,
              ["bed_a_temp", "bed_a_ph", "bed_a_moisture"],
              ["pump_a"]),
@@ -76,8 +81,6 @@ class TwinStateManager:
 
     def _initialize_actuators(self):
         actuator_defs = [
-            ("pump_main", "Main Water Pump Cable", "pump", "zone_air"),
-            ("pump_nutrient", "Nutrient Pump Cable", "pump", "zone_air"),
             ("pump_a", "Water Pump A", "pump", "zone_bed_a"),
             ("pump_b", "Water Pump B", "pump", "zone_bed_b"),
             ("pump_c", "Water Pump C", "pump", "zone_bed_c"),
@@ -102,7 +105,16 @@ class TwinStateManager:
             actuator.state = command.command
             actuator.current_value = command.value or (1.0 if command.command == ActuatorState.ON else 0.0)
             actuator.last_changed = get_now()
-            return actuator
+            result = actuator
+            aid = command.actuator_id
+            state = command.command
+
+        if self._actuator_sink and aid in self._actuators:
+            try:
+                self._actuator_sink(aid, state)
+            except Exception as e:
+                print(f"[TwinState] Actuator sink error: {e}")
+        return result
 
     def add_alert(self, severity: AlertSeverity, message: str,
                   sensor_id: str = None, zone_id: str = None,

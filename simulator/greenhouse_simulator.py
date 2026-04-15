@@ -110,9 +110,11 @@ class GreenhouseSimulator:
 
     def _setup_sensors(self):
         sensors_config = [
-            # Greenhouse Condition (zone_air) — 2x air humidity per spec
+            # Greenhouse Condition (zone_air) — air humidity, temperature, light
             ("air_rh_1", SensorType.HUMIDITY, "zone_air", "%", 65.0, 10.0, 1.5, 6.0, 20.0, 99.0),
             ("air_rh_2", SensorType.HUMIDITY, "zone_air", "%", 63.0, 9.5, 1.7, 6.5, 20.0, 99.0),
+            ("air_temp_1", SensorType.TEMPERATURE, "zone_air", "°C", 26.0, 4.0, 0.3, -3.0, 10.0, 45.0),
+            ("air_light_1", SensorType.LIGHT, "zone_air", "lux", 15000.0, 12000.0, 500.0, 0.0, 0.0, 100000.0),
 
             # Substrate A (zone_bed_a) — soil temp x1, pH x1, moisture x1
             ("bed_a_temp", SensorType.SOIL_TEMPERATURE, "zone_bed_a", "°C", 22.0, 3.0, 0.2, -4.0, 10.0, 40.0),
@@ -148,8 +150,6 @@ class GreenhouseSimulator:
     def _setup_actuators(self):
         # Spec: 3x water pumps (one per substrate bed) + 2x pump driver cables
         self._actuator_states = {
-            "pump_main": ActuatorState.OFF,
-            "pump_nutrient": ActuatorState.OFF,
             "pump_a": ActuatorState.OFF,
             "pump_b": ActuatorState.OFF,
             "pump_c": ActuatorState.OFF,
