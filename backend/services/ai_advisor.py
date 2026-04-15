@@ -189,43 +189,7 @@ class AIAdvisor:
 
     def _analyze_climate(self, readings: Dict, crop: CropProfile) -> List[Insight]:
         results = []
-        temp = readings.get("zone_air:temperature")
         rh = readings.get("zone_air:humidity")
-        light = readings.get("zone_air:light_intensity")
-
-        if temp is not None:
-            temp_trend = self._get_trend_for("zone_air", "temperature")
-            if temp > crop.temp_max:
-                action = "Turn on the exhaust fan and open vents to cool down."
-                if temp > crop.temp_max + 5:
-                    action += " Consider misting or shade cloth if available."
-                results.append(Insight(
-                    title="Temperature Too High",
-                    message=f"Air temperature is {temp:.1f}°C, above the ideal range for {crop.name} ({crop.temp_min}-{crop.temp_max}°C). "
-                            f"This can cause heat stress, wilting, and reduced growth. Trend: {temp_trend}.",
-                    priority=InsightPriority.HIGH if temp > crop.temp_max + 3 else InsightPriority.MEDIUM,
-                    category="climate", action=action, icon="thermometer",
-                    metric_name="temperature", metric_value=temp,
-                ))
-            elif temp < crop.temp_min:
-                results.append(Insight(
-                    title="Temperature Too Low",
-                    message=f"Air temperature is {temp:.1f}°C, below the minimum for {crop.name} ({crop.temp_min}°C). "
-                            f"Cold stress slows growth and can damage roots. Trend: {temp_trend}.",
-                    priority=InsightPriority.HIGH if temp < crop.temp_min - 3 else InsightPriority.MEDIUM,
-                    category="climate",
-                    action="Turn on the heater. Check for drafts or poor insulation.",
-                    icon="thermometer", metric_name="temperature", metric_value=temp,
-                ))
-            else:
-                distance = abs(temp - crop.temp_ideal)
-                if distance < 2:
-                    results.append(Insight(
-                        title="Temperature Optimal",
-                        message=f"Air temperature is {temp:.1f}°C — near ideal ({crop.temp_ideal}°C) for {crop.name}.",
-                        priority=InsightPriority.INFO, category="climate", icon="check",
-                        metric_name="temperature", metric_value=temp,
-                    ))
 
         if rh is not None:
             if rh > crop.rh_max:
@@ -234,7 +198,7 @@ class AIAdvisor:
                     message=f"Humidity is {rh:.0f}%, above {crop.rh_max}% max for {crop.name}. "
                             f"High humidity promotes fungal diseases like Botrytis and powdery mildew.",
                     priority=InsightPriority.MEDIUM, category="climate",
-                    action="Increase ventilation with exhaust fan. Reduce misting. Improve air circulation.",
+                    action="Increase ventilation. Reduce misting. Improve air circulation.",
                     icon="droplets", metric_name="humidity", metric_value=rh,
                 ))
             elif rh < crop.rh_min:
@@ -247,21 +211,16 @@ class AIAdvisor:
                     icon="droplets", metric_name="humidity", metric_value=rh,
                 ))
 
-        if light is not None:
-            if light < 500:
-                results.append(Insight(
-                    title="Low Light Conditions",
-                    message=f"Light intensity is {light:.0f} lux — this is very low. If it's daytime, check for obstructions.",
-                    priority=InsightPriority.LOW, category="climate",
-                    action="Turn on supplemental lighting if available. Clean greenhouse glazing.",
-                    icon="sun", metric_name="light_intensity", metric_value=light,
-                ))
-
         return results
 
     def _analyze_vpd(self, readings: Dict, crop: CropProfile) -> List[Insight]:
         results = []
-        temp = readings.get("zone_air:temperature")
+        soil_temps = [
+            readings.get(f"zone_bed_{bed}:soil_temperature")
+            for bed in ("a", "b", "c")
+        ]
+        valid_temps = [t for t in soil_temps if t is not None]
+        temp = sum(valid_temps) / len(valid_temps) if valid_temps else None
         rh = readings.get("zone_air:humidity")
 
         if temp is None or rh is None:
@@ -351,39 +310,21 @@ class AIAdvisor:
         return results
 
     def _analyze_efficiency(self, readings: Dict) -> List[Insight]:
-        """Cross-sensor analysis for energy/resource efficiency."""
+        """Cross-sensor analysis for pump/resource efficiency."""
         results = []
-        temp = readings.get("zone_air:temperature")
-        light = readings.get("zone_air:light_intensity")
-
         actuators = {a.actuator_id: a.state for a in twin_state.get_all_actuators()}
 
-        if temp is not None and temp < 20 and actuators.get("fan_exhaust") == "on":
-            results.append(Insight(
-                title="Exhaust Fan Running While Cool",
-                message=f"Temperature is already {temp:.1f}°C but the exhaust fan is on. This wastes energy.",
-                priority=InsightPriority.LOW, category="efficiency",
-                action="Consider turning off the exhaust fan to conserve energy.",
-                icon="zap",
-            ))
-
-        if temp is not None and temp > 28 and actuators.get("heater_main") == "on":
-            results.append(Insight(
-                title="Heater Running While Hot",
-                message=f"Temperature is {temp:.1f}°C but the heater is on. This is counterproductive.",
-                priority=InsightPriority.HIGH, category="efficiency",
-                action="Turn off the heater immediately.",
-                icon="zap",
-            ))
-
-        if light is not None and light > 30000 and actuators.get("light_supplemental") == "on":
-            results.append(Insight(
-                title="Supplemental Lights Unnecessary",
-                message=f"Natural light is {light:.0f} lux — supplemental lights are wasting electricity.",
-                priority=InsightPriority.LOW, category="efficiency",
-                action="Turn off supplemental lighting during bright daylight.",
-                icon="zap",
-            ))
+        for bed, label in [("a", "Substrate A"), ("b", "Substrate B"), ("c", "Substrate C")]:
+            moisture = readings.get(f"zone_bed_{bed}:soil_moisture")
+            pump_id = f"pump_{bed}"
+            if moisture is not None and moisture > 70 and actuators.get(pump_id) == "on":
+                results.append(Insight(
+                    title=f"{label} Pump Running While Wet",
+                    message=f"{label} moisture is already {moisture:.0f}% but the pump is still on. Over-watering wastes water and risks root rot.",
+                    priority=InsightPriority.MEDIUM, category="efficiency",
+                    action=f"Turn off {pump_id}. Soil is sufficiently moist.",
+                    icon="zap",
+                ))
 
         return results
 
@@ -394,23 +335,13 @@ class AIAdvisor:
         readings = self._get_current_readings()
         crop = self.get_crop_profile()
 
-        temp = readings.get("zone_air:temperature")
         rh = readings.get("zone_air:humidity")
-        light = readings.get("zone_air:light_intensity")
 
         parts = []
         parts.append(f"Current crop profile: {crop.name}.")
 
-        if temp is not None and rh is not None:
-            vpd = calculate_vpd(temp, rh)
-            temp_status = "optimal" if crop.temp_min <= temp <= crop.temp_max else ("too high" if temp > crop.temp_max else "too low")
-            parts.append(
-                f"The greenhouse air is {temp:.1f}°C ({temp_status}) with {rh:.0f}% humidity. "
-                f"VPD is {vpd:.2f} kPa."
-            )
-
-        if light is not None:
-            parts.append(f"Light intensity is {light:.0f} lux.")
+        if rh is not None:
+            parts.append(f"Air humidity is {rh:.0f}%.")
 
         for zone_id, label in [("zone_bed_a", "Substrate A"), ("zone_bed_b", "Substrate B"), ("zone_bed_c", "Substrate C")]:
             moisture = readings.get(f"{zone_id}:soil_moisture")
@@ -469,7 +400,9 @@ class AIAdvisor:
             return ChatResponse(answer=summary, insights=insights[:5])
 
         if any(w in q for w in ["vpd", "vapor pressure", "transpiration"]):
-            temp = readings.get("zone_air:temperature")
+            soil_temps = [readings.get(f"zone_bed_{b}:soil_temperature") for b in ("a", "b", "c")]
+            valid_temps = [t for t in soil_temps if t is not None]
+            temp = sum(valid_temps) / len(valid_temps) if valid_temps else None
             rh = readings.get("zone_air:humidity")
             if temp is not None and rh is not None:
                 vpd = calculate_vpd(temp, rh)
@@ -492,24 +425,17 @@ class AIAdvisor:
             return ChatResponse(answer="Not enough sensor data to calculate VPD yet. Waiting for temperature and humidity readings.")
 
         if any(w in q for w in ["temperature", "temp", "hot", "cold", "heat", "cool"]):
-            temp = readings.get("zone_air:temperature")
-            if temp is not None:
-                trend = self._get_trend_for("zone_air", "temperature")
-                stats = self._get_stats_for("zone_air", "temperature")
-                status = "optimal" if crop.temp_min <= temp <= crop.temp_max else ("too high" if temp > crop.temp_max else "too low")
-                answer = (
-                    f"**Air Temperature**: {temp:.1f}°C — {status}\n\n"
-                    f"- Ideal range for {crop.name}: {crop.temp_min}-{crop.temp_max}°C (ideal: {crop.temp_ideal}°C)\n"
-                    f"- Trend: {trend}\n"
-                )
-                if stats:
-                    answer += f"- Recent stats: min {stats['min']}°C, max {stats['max']}°C, avg {stats['mean']}°C\n"
-                if temp > crop.temp_max:
-                    answer += f"\n**Action**: Use exhaust fan and ventilation to bring temperature down."
-                elif temp < crop.temp_min:
-                    answer += f"\n**Action**: Turn on heater. Check for cold drafts."
-                return ChatResponse(answer=answer, data_points={"temperature": temp})
-            return ChatResponse(answer="Temperature data is not available yet.")
+            parts = []
+            for zone_id, label in [("zone_bed_a", "Substrate A"), ("zone_bed_b", "Substrate B"), ("zone_bed_c", "Substrate C")]:
+                soil_temp = readings.get(f"{zone_id}:soil_temperature")
+                if soil_temp is not None:
+                    trend = self._get_trend_for(zone_id, "soil_temperature")
+                    status = "optimal" if crop.temp_min <= soil_temp <= crop.temp_max else ("too high" if soil_temp > crop.temp_max else "too low")
+                    parts.append(f"**{label} Soil Temp**: {soil_temp:.1f}°C — {status} (trend: {trend})")
+            if parts:
+                parts.insert(0, f"**Soil Temperature Status** (ideal: {crop.temp_min}-{crop.temp_max}°C):\n")
+                return ChatResponse(answer="\n".join(parts))
+            return ChatResponse(answer="Soil temperature data is not available yet.")
 
         if any(w in q for w in ["humidity", "humid", "rh", "moisture air", "dry air"]):
             rh = readings.get("zone_air:humidity")
@@ -616,27 +542,6 @@ class AIAdvisor:
             for i, ins in enumerate(actionable[:5], 1):
                 lines.append(f"{i}. **{ins.title}** — {ins.action}")
             return ChatResponse(answer="\n".join(lines), insights=actionable[:5])
-
-        if any(w in q for w in ["light", "lux", "bright", "dark"]):
-            light = readings.get("zone_air:light_intensity")
-            if light is not None:
-                trend = self._get_trend_for("zone_air", "light_intensity")
-                if light < 500:
-                    status = "very low"
-                elif light < 5000:
-                    status = "low"
-                elif light > 50000:
-                    status = "very high"
-                else:
-                    status = "adequate"
-                return ChatResponse(
-                    answer=f"**Light Intensity**: {light:.0f} lux — {status}\n\n"
-                           f"- Trend: {trend}\n"
-                           f"- DLI target for {crop.name}: {crop.light_dli} mol/m²/day\n"
-                           f"- Recommended photoperiod: {crop.light_hours} hours",
-                    data_points={"light_intensity": light},
-                )
-            return ChatResponse(answer="Light data not available yet.")
 
         # Default fallback
         summary = self.generate_summary()

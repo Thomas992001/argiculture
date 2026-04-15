@@ -7,15 +7,13 @@ import ControlPanel from "../components/ControlPanel";
 import AlertPanel from "../components/AlertPanel";
 
 // Static actuator metadata — matches backend twin_state.py
+// Spec: 3x water pumps (per bed) + 2x water pump cables (shared drivers)
 const ACTUATOR_DEFS = [
-  { actuator_id: "pump_main", name: "Main Water Pump", type: "pump", zone_id: "zone_air" },
-  { actuator_id: "pump_nutrient", name: "Nutrient Pump", type: "pump", zone_id: "zone_air" },
-  { actuator_id: "fan_exhaust", name: "Exhaust Fan", type: "fan", zone_id: "zone_air" },
-  { actuator_id: "fan_circulation", name: "Circulation Fan", type: "fan", zone_id: "zone_air" },
-  { actuator_id: "valve_irrigation", name: "Irrigation Valve", type: "valve", zone_id: "zone_bed_a" },
-  { actuator_id: "heater_main", name: "Main Heater", type: "heater", zone_id: "zone_air" },
-  { actuator_id: "light_supplemental", name: "Supplemental Light", type: "light", zone_id: "zone_air" },
-  { actuator_id: "co2_injector", name: "CO₂ Injector", type: "injector", zone_id: "zone_air" },
+  { actuator_id: "pump_main", name: "Main Water Pump Cable", type: "pump", zone_id: "zone_air" },
+  { actuator_id: "pump_nutrient", name: "Nutrient Pump Cable", type: "pump", zone_id: "zone_air" },
+  { actuator_id: "pump_a", name: "Water Pump A", type: "pump", zone_id: "zone_bed_a" },
+  { actuator_id: "pump_b", name: "Water Pump B", type: "pump", zone_id: "zone_bed_b" },
+  { actuator_id: "pump_c", name: "Water Pump C", type: "pump", zone_id: "zone_bed_c" },
 ];
 
 export default function ControlPage() {

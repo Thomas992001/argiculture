@@ -36,6 +36,7 @@ from backend.services.ai_advisor import (
     calculate_dew_point,
     CROP_PROFILES,
 )
+from backend.services.weather_service import weather_service
 
 SYSTEM_PROMPT = """You are GreenMind, an expert AI agronomist and digital twin advisor for a small-scale greenhouse and water-culture (hydroponic) farm. You are embedded inside a real-time digital twin system that gives you live sensor data from the greenhouse.
 
@@ -98,14 +99,19 @@ def _build_sensor_context() -> str:
             lines.append(f"- {r.sensor_type.value}: {r.value} {r.unit} (trend: {trend}){quality_flag}")
         lines.append("")
 
-    # VPD calculation
-    temp_r = latest.get("zone_air:temperature")
+    # VPD calculation using avg soil temp as proxy (no air temp sensor per spec)
+    soil_temps = [
+        latest.get(f"zone_bed_{bed}:soil_temperature")
+        for bed in ("a", "b", "c")
+    ]
+    valid_temps = [r for r in soil_temps if r is not None]
     rh_r = latest.get("zone_air:humidity")
-    if temp_r and rh_r:
-        vpd = calculate_vpd(temp_r.value, rh_r.value)
-        dp = calculate_dew_point(temp_r.value, rh_r.value)
+    if valid_temps and rh_r:
+        avg_temp = sum(r.value for r in valid_temps) / len(valid_temps)
+        vpd = calculate_vpd(avg_temp, rh_r.value)
+        dp = calculate_dew_point(avg_temp, rh_r.value)
         lines.append(f"### Derived Metrics")
-        lines.append(f"- VPD: {vpd} kPa")
+        lines.append(f"- VPD: {vpd} kPa (using avg soil temp {avg_temp:.1f}°C as proxy)")
         lines.append(f"- Dew Point: {dp}°C")
         lines.append("")
 
@@ -124,6 +130,32 @@ def _build_sensor_context() -> str:
         for al in alerts[:10]:
             lines.append(f"- [{al.severity.value.upper()}] {al.message}")
         lines.append("")
+
+    # Outdoor weather (Open-Meteo) — helps Gemini reason about indoor vs outdoor
+    try:
+        weather = weather_service.get_weather()
+        cur = weather.get("current", {}) or {}
+        nxt = weather.get("next_12h", {}) or {}
+        if cur:
+            lines.append("### Outdoor Weather (Live)")
+            lines.append(f"- Condition: {cur.get('condition', 'n/a')}")
+            if cur.get("temp_c") is not None:
+                lines.append(f"- Outdoor temp: {cur['temp_c']}°C")
+            if cur.get("humidity_pct") is not None:
+                lines.append(f"- Outdoor humidity: {cur['humidity_pct']}%")
+            if cur.get("cloud_cover_pct") is not None:
+                lines.append(f"- Cloud cover: {cur['cloud_cover_pct']}%")
+            if cur.get("wind_kmh") is not None:
+                lines.append(f"- Wind: {cur['wind_kmh']} km/h")
+            lines.append("")
+        if nxt and nxt.get("max_temp_c") is not None:
+            lines.append("### 12-Hour Weather Forecast")
+            lines.append(f"- Temp range: {nxt.get('min_temp_c')}°C — {nxt.get('max_temp_c')}°C")
+            lines.append(f"- Max rain probability: {nxt.get('max_rain_prob_pct', 0)}%")
+            lines.append(f"- Total expected rain: {nxt.get('total_rain_mm', 0)} mm")
+            lines.append("")
+    except Exception as e:
+        print(f"[GeminiAdvisor] Weather context error: {e}")
 
     # Active crop
     crop = rule_advisor.get_crop_profile()
@@ -312,8 +344,7 @@ class GeminiAdvisor:
         # Gather 24h stats for key sensors
         stats_lines = ["## 24-Hour Statistics Summary"]
         for zone, sensor in [
-            ("zone_air", "temperature"), ("zone_air", "humidity"),
-            ("zone_air", "light_intensity"),
+            ("zone_air", "humidity"),
             ("zone_bed_a", "soil_temperature"), ("zone_bed_a", "soil_ph"), ("zone_bed_a", "soil_moisture"),
             ("zone_bed_b", "soil_temperature"), ("zone_bed_b", "soil_ph"), ("zone_bed_b", "soil_moisture"),
             ("zone_bed_c", "soil_temperature"), ("zone_bed_c", "soil_ph"), ("zone_bed_c", "soil_moisture"),
@@ -324,7 +355,7 @@ class GeminiAdvisor:
             f"{context}\n\n{chr(10).join(stats_lines)}\n\n---\n\n"
             f"Generate a comprehensive **Daily Greenhouse Report** with these sections:\n"
             f"1. **Executive Summary** (2-3 sentences, overall health grade A-F)\n"
-            f"2. **Climate Analysis** (temperature, humidity, VPD, CO₂ trends)\n"
+            f"2. **Climate Analysis** (temperature, humidity, VPD, light trends)\n"
             f"3. **Water & Nutrition** (irrigation status, pH/EC, reservoir)\n"
             f"4. **Issues & Risks** (any problems detected, disease risk assessment)\n"
             f"5. **Recommendations** (top 3-5 prioritized actions)\n"
@@ -476,7 +507,7 @@ class GeminiAdvisor:
             f"Design an optimal **24-hour automation schedule** for this greenhouse.\n\n"
             f"For each time block (early morning, morning, midday, afternoon, evening, night), specify:\n"
             f"- **Actuator states** (which fans/pumps/heater/lights should be on/off)\n"
-            f"- **Setpoints** (target temperature, humidity, CO₂ ranges)\n"
+            f"- **Setpoints** (target temperature, humidity ranges)\n"
             f"- **Irrigation windows** (when and how long)\n"
             f"- **Reasoning** (why this schedule optimizes for the active crop)\n\n"
             f"Consider energy efficiency, day/night cycles, and plant biology. "

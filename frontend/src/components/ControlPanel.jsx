@@ -1,12 +1,7 @@
 import { useState } from "react";
 import {
   Power,
-  Fan,
   Droplets,
-  Flame,
-  Sun,
-  Wind,
-  CloudHail,
   AlertOctagon,
   Loader2,
 } from "lucide-react";
@@ -15,14 +10,11 @@ import { db, auth } from "../firebase";
 import { doc, setDoc } from "firebase/firestore";
 
 const ACTUATOR_CONFIG = {
-  pump_main: { icon: Droplets, label: "Main Pump", color: "blue" },
-  pump_nutrient: { icon: Droplets, label: "Nutrient Pump", color: "cyan" },
-  fan_exhaust: { icon: Fan, label: "Exhaust Fan", color: "purple" },
-  fan_circulation: { icon: Wind, label: "Circulation Fan", color: "indigo" },
-  valve_irrigation: { icon: Droplets, label: "Irrigation Valve", color: "teal" },
-  heater_main: { icon: Flame, label: "Main Heater", color: "red" },
-  light_supplemental: { icon: Sun, label: "Supplemental Light", color: "yellow" },
-  co2_injector: { icon: CloudHail, label: "CO₂ Injector", color: "emerald" },
+  pump_main: { icon: Droplets, label: "Main Pump Cable", color: "blue" },
+  pump_nutrient: { icon: Droplets, label: "Nutrient Pump Cable", color: "cyan" },
+  pump_a: { icon: Droplets, label: "Water Pump A", color: "teal" },
+  pump_b: { icon: Droplets, label: "Water Pump B", color: "teal" },
+  pump_c: { icon: Droplets, label: "Water Pump C", color: "teal" },
 };
 
 function ActuatorSwitch({ actuator, onToggle }) {

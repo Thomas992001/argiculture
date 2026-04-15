@@ -23,9 +23,21 @@ import {
   XCircle,
   Upload,
   Trash2,
+  Mic,
+  MicOff,
+  Volume2,
+  VolumeX,
+  Languages,
 } from "lucide-react";
 import { api } from "../api/client";
 import { AiInsightPanel } from "../components/AiInsightCards";
+
+const LANGUAGES = [
+  { code: "en-US", label: "English", ttsLang: "en-US" },
+  { code: "ms-MY", label: "Bahasa Melayu", ttsLang: "ms-MY" },
+  { code: "zh-CN", label: "中文", ttsLang: "zh-CN" },
+  { code: "ta-IN", label: "தமிழ்", ttsLang: "ta-IN" },
+];
 
 const QUICK_ACTIONS = [
   { label: "How is my greenhouse?", icon: Sparkles, color: "text-greenhouse-400" },
@@ -96,9 +108,16 @@ export default function AssistantPage() {
   const [toolInput, setToolInput] = useState("");
   const [selectedCrop, setSelectedCrop] = useState("lettuce");
   const [imageFile, setImageFile] = useState(null);
+  const [voiceLang, setVoiceLang] = useState("en-US");
+  const [isListening, setIsListening] = useState(false);
+  const [ttsEnabled, setTtsEnabled] = useState(true);
+  const [showLangMenu, setShowLangMenu] = useState(false);
   const scrollRef = useRef(null);
   const inputRef = useRef(null);
   const fileInputRef = useRef(null);
+  const recognitionRef = useRef(null);
+
+  const speechSupported = typeof window !== "undefined" && ("SpeechRecognition" in window || "webkitSpeechRecognition" in window);
 
   useEffect(() => {
     api.getAdvisorStatus().then(setGeminiStatus).catch(() => {});
@@ -106,15 +125,69 @@ export default function AssistantPage() {
     api.getCropProfiles().then(setCrops).catch(() => {});
   }, []);
 
+  const speakText = useCallback((text) => {
+    if (!ttsEnabled || !window.speechSynthesis) return;
+    window.speechSynthesis.cancel();
+    const plain = text
+      .replace(/\*\*(.+?)\*\*/g, "$1")
+      .replace(/\*(.+?)\*/g, "$1")
+      .replace(/`(.+?)`/g, "$1")
+      .replace(/#{1,3}\s/g, "")
+      .replace(/\|/g, " ")
+      .replace(/---/g, "");
+    const maxLen = 500;
+    const chunk = plain.length > maxLen ? plain.slice(0, maxLen) + "..." : plain;
+    const utterance = new SpeechSynthesisUtterance(chunk);
+    utterance.lang = voiceLang;
+    utterance.rate = 1.0;
+    utterance.pitch = 1.0;
+    window.speechSynthesis.speak(utterance);
+  }, [ttsEnabled, voiceLang]);
+
+  const startListening = useCallback(() => {
+    if (!speechSupported) return;
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    const recognition = new SpeechRecognition();
+    recognition.lang = voiceLang;
+    recognition.interimResults = true;
+    recognition.continuous = false;
+
+    recognition.onstart = () => setIsListening(true);
+    recognition.onresult = (event) => {
+      const transcript = Array.from(event.results)
+        .map((r) => r[0].transcript)
+        .join("");
+      setInput(transcript);
+      if (event.results[0]?.isFinal) {
+        setIsListening(false);
+        if (transcript.trim()) {
+          sendMessage(transcript.trim());
+          setInput("");
+        }
+      }
+    };
+    recognition.onerror = () => setIsListening(false);
+    recognition.onend = () => setIsListening(false);
+
+    recognitionRef.current = recognition;
+    recognition.start();
+  }, [voiceLang, speechSupported]);
+
+  const stopListening = useCallback(() => {
+    recognitionRef.current?.stop();
+    setIsListening(false);
+  }, []);
+
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
   }, [messages]);
 
-  const addBotMessage = (text, extra = {}) => {
+  const addBotMessage = useCallback((text, extra = {}) => {
     setMessages((prev) => [...prev, {
       id: Date.now() + Math.random(), text, isUser: false, ...extra,
     }]);
-  };
+    speakText(text);
+  }, [speakText]);
 
   const sendMessage = async (text) => {
     setMessages((prev) => [...prev, { id: Date.now(), text, isUser: true }]);
@@ -223,7 +296,39 @@ export default function AssistantPage() {
             Powered by Google Gemini — real AI with live greenhouse sensor data
           </p>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2">
+          {/* Language selector */}
+          <div className="relative">
+            <button onClick={() => setShowLangMenu(!showLangMenu)}
+              className="flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-full bg-gray-800 border border-gray-700 text-gray-400 hover:text-gray-200 hover:border-gray-600 transition-colors">
+              <Languages size={12} />
+              {LANGUAGES.find((l) => l.code === voiceLang)?.label || "English"}
+            </button>
+            {showLangMenu && (
+              <div className="absolute right-0 top-full mt-1 z-50 bg-gray-800 border border-gray-700 rounded-lg shadow-xl py-1 min-w-[140px]">
+                {LANGUAGES.map((lang) => (
+                  <button key={lang.code}
+                    onClick={() => { setVoiceLang(lang.code); setShowLangMenu(false); }}
+                    className={`w-full text-left px-3 py-1.5 text-xs hover:bg-gray-700 transition-colors ${
+                      voiceLang === lang.code ? "text-greenhouse-400 font-medium" : "text-gray-300"
+                    }`}>
+                    {lang.label}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* TTS toggle */}
+          <button onClick={() => { setTtsEnabled(!ttsEnabled); window.speechSynthesis?.cancel(); }}
+            title={ttsEnabled ? "Mute voice output" : "Enable voice output"}
+            className={`p-1.5 rounded-lg transition-colors ${
+              ttsEnabled ? "text-greenhouse-400 hover:bg-greenhouse-500/10" : "text-gray-500 hover:bg-gray-800"
+            }`}>
+            {ttsEnabled ? <Volume2 size={14} /> : <VolumeX size={14} />}
+          </button>
+
+          {/* Gemini status */}
           {geminiStatus && (
             <div className={`flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-full border ${
               geminiStatus.all_models_blocked
@@ -234,10 +339,10 @@ export default function AssistantPage() {
             }`}>
               {geminiStatus.all_models_blocked ? <XCircle size={12} /> : geminiOk ? <CheckCircle size={12} /> : <XCircle size={12} />}
               {geminiStatus.all_models_blocked
-                ? "Rate limited — waiting for reset"
+                ? "Rate limited"
                 : geminiOk
                   ? `Gemini ${geminiStatus.active_model || geminiStatus.model}`
-                  : "Local Mode (set API key)"}
+                  : "Local Mode"}
             </div>
           )}
           <button onClick={() => api.getAdvisorStatus().then(setGeminiStatus)}
@@ -371,10 +476,21 @@ export default function AssistantPage() {
             </div>
           )}
 
-          {/* Input */}
-          <form onSubmit={handleSubmit} className="p-4 border-t border-gray-800 flex gap-2">
+          {/* Input + Voice Controls */}
+          <form onSubmit={handleSubmit} className="p-4 border-t border-gray-800 flex gap-2 items-center">
+            {speechSupported && (
+              <button type="button" onClick={isListening ? stopListening : startListening}
+                title={isListening ? "Stop listening" : "Voice input"}
+                className={`px-3 py-2.5 rounded-xl transition-colors ${
+                  isListening
+                    ? "bg-red-600 hover:bg-red-500 text-white animate-pulse"
+                    : "bg-gray-800 hover:bg-gray-700 text-gray-400 hover:text-gray-200"
+                }`}>
+                {isListening ? <MicOff size={16} /> : <Mic size={16} />}
+              </button>
+            )}
             <input ref={inputRef} type="text" value={input} onChange={(e) => setInput(e.target.value)}
-              placeholder="Ask GreenMind anything about your greenhouse..."
+              placeholder={isListening ? "Listening..." : "Ask GreenMind anything..."}
               className="flex-1 bg-gray-800 border border-gray-700 rounded-xl px-4 py-2.5 text-sm text-gray-200 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-greenhouse-500/50"
               disabled={loading} />
             <button type="submit" disabled={!input.trim() || loading}

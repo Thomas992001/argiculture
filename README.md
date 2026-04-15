@@ -39,12 +39,12 @@ A full-stack digital twin system that provides real-time monitoring, AI-powered 
 - Orbit controls (rotate, zoom, pan)
 
 ### AI Analytics
-- **Forecasting**: XGBoost-based multi-step prediction for temperature, humidity, moisture, CO₂, pH, water level
+- **Forecasting**: XGBoost-based multi-step prediction for temperature, humidity, moisture, pH, water level
 - **Anomaly Detection**: Z-score + rate-of-change + Isolation Forest ensemble
 - Statistical summaries and trend analysis
 
 ### Actuator Control
-- 8 controllable actuators (pumps, fans, valves, heater, lights, CO₂ injector)
+- 9 controllable actuators (main pump, nutrient pump, 3 per-bed water pumps, exhaust fan, circulation fan, heater, supplemental light)
 - Emergency stop function
 - Actuator effects reflect in sensor readings (e.g., fan ON → temperature drops)
 
@@ -162,7 +162,7 @@ This starts:
 
 | Zone | Sensors | Actuators |
 |------|---------|-----------|
-| Greenhouse Air | Temperature, Humidity, CO₂, Light | Exhaust Fan, Circulation Fan, Heater, CO₂ Injector, Lights |
+| Greenhouse Air | Temperature, Humidity ×2, Light | Exhaust Fan, Circulation Fan, Heater, Lights |
 | Substrate Bed | Soil Moisture, Temperature, EC | Irrigation Valve |
 | Hydroponic NFT | pH, EC, Water Temperature | Nutrient Pump |
 | Reservoir | Water Level, pH, EC, Temperature | Main Pump |

@@ -12,6 +12,8 @@ from typing import List, Optional, Dict
 from backend.config import settings
 from backend.services.gemini_advisor import gemini_advisor
 from backend.services.ai_advisor import advisor as rule_advisor, CROP_PROFILES, calculate_vpd, calculate_dew_point
+from backend.services.weather_service import weather_service
+from backend.services.automation_engine import automation_engine
 from backend.database import tsdb
 
 router = APIRouter(prefix="/api/advisor", tags=["AI Advisor (Gemini)"])
@@ -22,6 +24,7 @@ router = APIRouter(prefix="/api/advisor", tags=["AI Advisor (Gemini)"])
 class ChatRequest(BaseModel):
     message: str
     session_id: str = "default"
+    language: Optional[str] = None  # "en" | "zh" | "ms" (Malay) | any ISO name
 
 
 class WhatIfRequest(BaseModel):
@@ -67,7 +70,20 @@ class CropProfileResponse(BaseModel):
 @router.post("/chat", response_model=ChatResponseModel)
 async def chat(request: ChatRequest):
     """Chat with the AI advisor. Powered by Google Gemini with live sensor context."""
-    result = await gemini_advisor.chat(request.message, request.session_id)
+    # If a language is requested, prepend an instruction so Gemini replies in that language.
+    # Farmers in Malaysia commonly use English, Chinese, and Bahasa Melayu.
+    language_map = {
+        "en": "English",
+        "zh": "Chinese (Simplified, \u7b80\u4f53\u4e2d\u6587)",
+        "ms": "Bahasa Melayu",
+        "ta": "Tamil",
+    }
+    msg = request.message
+    if request.language:
+        lang_name = language_map.get(request.language, request.language)
+        msg = f"[Please respond in {lang_name}.]\n{msg}"
+
+    result = await gemini_advisor.chat(msg, request.session_id)
     return ChatResponseModel(
         answer=result.get("answer", ""),
         model=result.get("model", ""),
@@ -228,15 +244,90 @@ async def set_active_crop(crop_name: str):
     return {"status": "ok", "active_crop": cp.name, "message": f"Now monitoring for {cp.name}."}
 
 
+@router.get("/weather")
+async def get_weather():
+    """Live outdoor weather + 12-hour forecast for the farm location."""
+    return weather_service.get_weather()
+
+
+@router.get("/weather/refresh")
+async def refresh_weather():
+    """Force-refresh the weather cache."""
+    return weather_service.get_weather(force_refresh=True)
+
+
+@router.get("/automation/status")
+async def automation_status():
+    """Inspect the closed-loop automation engine (auto-irrigation)."""
+    return automation_engine.get_status()
+
+
+@router.post("/automation/enabled")
+async def set_automation_enabled(enabled: bool = Query(...)):
+    """Enable or disable the closed-loop automation engine."""
+    automation_engine.set_enabled(enabled)
+    return {"enabled": automation_engine.enabled}
+
+
+@router.get("/forecast-soil")
+async def forecast_soil_conditions(horizon_hours: int = Query(4, ge=1, le=24)):
+    """
+    Gemini-powered forecast for soil moisture / temperature / pH + air humidity
+    over the next few hours. Combines sensor history with live weather.
+    """
+    if not gemini_advisor.is_available:
+        return {"forecast": "Gemini not available.", "powered_by": "fallback"}
+
+    from backend.services.gemini_advisor import _build_sensor_context, _build_history_context
+    context = _build_sensor_context()
+
+    history_lines = ["## Recent Sensor Statistics"]
+    for zone, sensor in [
+        ("zone_air", "humidity"),
+        ("zone_bed_a", "soil_moisture"), ("zone_bed_a", "soil_temperature"), ("zone_bed_a", "soil_ph"),
+        ("zone_bed_b", "soil_moisture"), ("zone_bed_b", "soil_temperature"), ("zone_bed_b", "soil_ph"),
+        ("zone_bed_c", "soil_moisture"), ("zone_bed_c", "soil_temperature"), ("zone_bed_c", "soil_ph"),
+    ]:
+        history_lines.append(f"- {zone}/{sensor}: {_build_history_context(zone, sensor, 100)}")
+
+    prompt = (
+        f"{context}\n\n{chr(10).join(history_lines)}\n\n---\n\n"
+        f"Predict what will happen to these sensors over the NEXT {horizon_hours} HOURS:\n"
+        f"- Air humidity\n- Soil moisture (beds A/B/C)\n- Soil temperature (beds A/B/C)\n- Soil pH (beds A/B/C)\n\n"
+        f"Use the outdoor weather forecast to reason about indoor dynamics. "
+        f"For each metric, give:\n"
+        f"1. Predicted direction (rising / falling / stable)\n"
+        f"2. Predicted range at +{horizon_hours}h\n"
+        f"3. Risk flag (ok / watch / act now)\n"
+        f"4. One-line reason tied to weather or actuator state\n\n"
+        f"Finish with a **Top 3 actions** section. Format with markdown."
+    )
+
+    try:
+        response = await gemini_advisor._generate_async(prompt)
+        return {
+            "forecast": response,
+            "horizon_hours": horizon_hours,
+            "powered_by": "google_gemini",
+        }
+    except Exception as e:
+        return {"forecast": f"Error: {e}", "powered_by": "error"}
+
+
 @router.get("/vpd")
 async def get_vpd_info():
-    """Get current VPD calculation."""
+    """Get current VPD calculation using avg soil temp as proxy."""
     latest = tsdb.get_all_latest()
-    temp_r = latest.get("zone_air:temperature")
+    soil_temps = [
+        latest.get(f"zone_bed_{bed}:soil_temperature")
+        for bed in ("a", "b", "c")
+    ]
+    valid_temps = [r for r in soil_temps if r is not None]
     rh_r = latest.get("zone_air:humidity")
-    if not temp_r or not rh_r:
+    if not valid_temps or not rh_r:
         return {"error": "Sensor data not available"}
-    temp, rh = temp_r.value, rh_r.value
+    temp = sum(r.value for r in valid_temps) / len(valid_temps)
+    rh = rh_r.value
     vpd = calculate_vpd(temp, rh)
     dp = calculate_dew_point(temp, rh)
     crop = rule_advisor.get_crop_profile()

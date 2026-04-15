@@ -6,7 +6,7 @@ import {
   AlertTriangle,
   Server,
   Sparkles,
-  Sun,
+  Beaker,
 } from "lucide-react";
 import { api } from "../api/client";
 import { useRTDBData } from "../hooks/useRTDBData";
@@ -53,7 +53,7 @@ export default function OverviewPage() {
   const fetchHistory = useCallback(async () => {
     try {
       const [airHist, ...bedHists] = await Promise.all([
-        api.getSensorHistory("zone_air", "temperature", 30),
+        api.getSensorHistory("zone_air", "humidity", 30),
         ...BED_ZONES.map((bed) =>
           api.getSensorHistory(bed.value, "soil_moisture", 30)
         ),
@@ -130,28 +130,28 @@ export default function OverviewPage() {
       {/* Status cards row */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <StatusCard
-          icon={Thermometer}
-          label="Avg Temperature"
-          value={getAvg(sensorData, "temperature")}
-          unit="°C"
-          color="text-red-400"
-          bg="bg-red-400/10"
-        />
-        <StatusCard
           icon={Droplets}
-          label="Avg Humidity"
+          label="Avg Air Humidity"
           value={getAvg(sensorData, "humidity")}
           unit="%"
           color="text-blue-400"
           bg="bg-blue-400/10"
         />
         <StatusCard
-          icon={Activity}
-          label="Active Sensors"
-          value={status?.active_sensors || 0}
+          icon={Thermometer}
+          label="Avg Soil Temp"
+          value={getAvg(sensorData, "soil_temperature")}
+          unit="°C"
+          color="text-red-400"
+          bg="bg-red-400/10"
+        />
+        <StatusCard
+          icon={Beaker}
+          label="Avg Soil pH"
+          value={getAvg(sensorData, "soil_ph")}
           unit=""
-          color="text-greenhouse-400"
-          bg="bg-greenhouse-400/10"
+          color="text-green-400"
+          bg="bg-green-400/10"
         />
         <StatusCard
           icon={AlertTriangle}
@@ -171,9 +171,9 @@ export default function OverviewPage() {
         <div className="lg:col-span-2 space-y-4">
           <RealtimeChart
             data={airHistory}
-            sensorType="temperature"
+            sensorType="humidity"
             height={250}
-            title="Air Temperature (Last 30 min)"
+            title="Air Humidity (Last 30 min)"
           />
         </div>
         <div className="space-y-4">

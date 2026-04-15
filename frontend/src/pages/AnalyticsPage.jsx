@@ -4,9 +4,7 @@ import { api } from "../api/client";
 import ForecastChart from "../components/ForecastChart";
 
 const FORECAST_OPTIONS = [
-  { zone: "zone_air", sensor: "temperature", label: "Temperature Forecast" },
-  { zone: "zone_air", sensor: "humidity", label: "Humidity Forecast" },
-  { zone: "zone_air", sensor: "light_intensity", label: "Light Forecast" },
+  { zone: "zone_air", sensor: "humidity", label: "Air Humidity Forecast" },
   { zone: "zone_bed_a", sensor: "soil_temperature", label: "Soil Temperature Forecast" },
   { zone: "zone_bed_a", sensor: "soil_ph", label: "Soil pH Value Forecast" },
   { zone: "zone_bed_a", sensor: "soil_moisture", label: "Soil Moisture Forecast" },

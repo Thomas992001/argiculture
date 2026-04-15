@@ -1,10 +1,8 @@
-import { useState, useEffect } from "react";
-import { Thermometer, Droplets, Sun, ArrowLeft } from "lucide-react";
+import { useState } from "react";
+import { Droplets, ArrowLeft } from "lucide-react";
 import { useRTDBData } from "../hooks/useRTDBData";
 import VirtualGreenhouse from "../components/VirtualGreenhouse";
 import SensorCard from "../components/SensorCard";
-import { Canvas } from "@react-three/fiber";
-import { OrbitControls } from "@react-three/drei";
 
 const BED_META = {
   zone_bed_a: { label: "Substrate Bed A", color: "#22c55e" },
@@ -16,12 +14,9 @@ export default function GreenhousePage() {
   const [selectedBed, setSelectedBed] = useState(null);
   const { data: rtdbData } = useRTDBData();
 
-  // Sensor data comes exclusively from RTDB
   const sensorData = rtdbData || {};
 
-  const temp = sensorData["zone_air:temperature"]?.value;
-  const humidity = sensorData["zone_air:humidity"]?.value;
-  const light = sensorData["zone_air:light_intensity"]?.value;
+  const humidity1 = sensorData["zone_air:humidity"]?.value;
 
   const handleBedSelect = (bedId) => {
     setSelectedBed((prev) => (prev === bedId ? null : bedId));
@@ -39,35 +34,16 @@ export default function GreenhousePage() {
         </p>
       </div>
 
-      {/* Always-visible greenhouse conditions */}
-      <div className="grid grid-cols-3 gap-3">
-        <LiveCard
-          icon={Thermometer}
-          label="Room Temperature"
-          value={temp}
-          unit="°C"
-          color="text-red-400"
-          bg="bg-red-400/10"
-          border="border-red-400/20"
-        />
+      {/* Air humidity — the only greenhouse-level sensor per spec */}
+      <div className="grid grid-cols-2 gap-3">
         <LiveCard
           icon={Droplets}
-          label="Humidity"
-          value={humidity}
+          label="Air Humidity (Sensor 1)"
+          value={humidity1}
           unit="%"
           color="text-blue-400"
           bg="bg-blue-400/10"
           border="border-blue-400/20"
-        />
-        <LiveCard
-          icon={Sun}
-          label="Light"
-          value={light}
-          unit="lux"
-          color="text-yellow-400"
-          bg="bg-yellow-400/10"
-          border="border-yellow-400/20"
-          decimals={0}
         />
       </div>
 

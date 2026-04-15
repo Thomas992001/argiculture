@@ -12,9 +12,7 @@ const ZONES = [
 
 const SENSOR_TYPES_BY_ZONE = {
   zone_air: [
-    { value: "temperature", label: "Temperature" },
-    { value: "humidity", label: "Humidity" },
-    { value: "light_intensity", label: "Light" },
+    { value: "humidity", label: "Air Humidity" },
   ],
   zone_bed: [
     { value: "soil_temperature", label: "Soil Temperature" },
@@ -31,7 +29,7 @@ const BED_ZONES = [
 
 export default function SensorsPage() {
   const [selectedZone, setSelectedZone] = useState("zone_air");
-  const [selectedSensor, setSelectedSensor] = useState("temperature");
+  const [selectedSensor, setSelectedSensor] = useState("humidity");
   const [history, setHistory] = useState([]);
   const [bedHistories, setBedHistories] = useState({});
   const [stats, setStats] = useState(null);

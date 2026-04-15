@@ -10,17 +10,69 @@ import {
   Zap,
   Loader2,
   Trash2,
+  Mic,
+  MicOff,
+  Globe,
 } from "lucide-react";
 import { api } from "../api/client";
 
-const QUICK_QUESTIONS = [
-  { label: "How is my greenhouse?", icon: Sparkles },
-  { label: "Should I water now?", icon: Lightbulb },
-  { label: "Any problems?", icon: Lightbulb },
-  { label: "Give me tips", icon: Sparkles },
-  { label: "What's the VPD?", icon: Leaf },
-  { label: "Explain pH to me", icon: Leaf },
-];
+// ── Language-aware UI + voice recognition ──
+// Each entry provides: label, BCP-47 locale for Web Speech API,
+// localized quick questions, and localized UI strings. The backend
+// tags the chat payload with `language` so Gemini replies in-kind.
+const LANGUAGES = {
+  en: {
+    label: "English",
+    locale: "en-US",
+    placeholder: "Ask anything...",
+    title: "Ask me anything about your greenhouse",
+    thinking: "Thinking...",
+    listening: "Listening...",
+    error: "Sorry, I couldn't process that. Please try again.",
+    quick: [
+      { label: "How is my greenhouse?", icon: Sparkles },
+      { label: "Should I water now?", icon: Lightbulb },
+      { label: "Any problems?", icon: Lightbulb },
+      { label: "Give me tips", icon: Sparkles },
+      { label: "What's the VPD?", icon: Leaf },
+      { label: "Explain pH to me", icon: Leaf },
+    ],
+  },
+  zh: {
+    label: "中文",
+    locale: "zh-CN",
+    placeholder: "问点什么...",
+    title: "关于温室，你想了解什么？",
+    thinking: "思考中...",
+    listening: "正在聆听...",
+    error: "抱歉，处理失败，请重试。",
+    quick: [
+      { label: "温室现在怎么样？", icon: Sparkles },
+      { label: "现在需要浇水吗？", icon: Lightbulb },
+      { label: "有没有问题？", icon: Lightbulb },
+      { label: "给我一些建议", icon: Sparkles },
+      { label: "VPD 是多少？", icon: Leaf },
+      { label: "什么是 pH？", icon: Leaf },
+    ],
+  },
+  ms: {
+    label: "Malay",
+    locale: "ms-MY",
+    placeholder: "Tanya apa-apa...",
+    title: "Tanya saya tentang rumah hijau anda",
+    thinking: "Sedang berfikir...",
+    listening: "Sedang mendengar...",
+    error: "Maaf, gagal memproses. Sila cuba lagi.",
+    quick: [
+      { label: "Bagaimana keadaan rumah hijau?", icon: Sparkles },
+      { label: "Patutkah saya siram sekarang?", icon: Lightbulb },
+      { label: "Ada masalah?", icon: Lightbulb },
+      { label: "Beri saya tip", icon: Sparkles },
+      { label: "Berapa VPD?", icon: Leaf },
+      { label: "Apa itu pH?", icon: Leaf },
+    ],
+  },
+};
 
 function MarkdownLite({ text }) {
   if (!text) return null;
@@ -55,8 +107,14 @@ export default function AiAssistant() {
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
+  const [language, setLanguage] = useState("en");
+  const [listening, setListening] = useState(false);
+  const [showLangMenu, setShowLangMenu] = useState(false);
   const scrollRef = useRef(null);
   const inputRef = useRef(null);
+  const recognitionRef = useRef(null);
+
+  const t = LANGUAGES[language];
 
   useEffect(() => {
     if (isOpen) setTimeout(() => inputRef.current?.focus(), 200);
@@ -66,21 +124,90 @@ export default function AiAssistant() {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
   }, [messages]);
 
+  // Set up Web Speech API recognition once. Reconfigured when language changes.
+  useEffect(() => {
+    const SpeechRecognition =
+      window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SpeechRecognition) return;
+
+    const recog = new SpeechRecognition();
+    recog.lang = t.locale;
+    recog.continuous = false;
+    recog.interimResults = false;
+    recog.maxAlternatives = 1;
+
+    recog.onresult = (event) => {
+      const transcript = event.results[0]?.[0]?.transcript?.trim();
+      if (transcript) {
+        setInput("");
+        sendMessage(transcript);
+      }
+    };
+    recog.onerror = () => setListening(false);
+    recog.onend = () => setListening(false);
+
+    recognitionRef.current = recog;
+    return () => {
+      try { recog.abort(); } catch {}
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [language]);
+
+  const toggleListening = () => {
+    const recog = recognitionRef.current;
+    if (!recog) {
+      alert("Voice input not supported in this browser. Try Chrome or Edge.");
+      return;
+    }
+    if (listening) {
+      try { recog.stop(); } catch {}
+      setListening(false);
+    } else {
+      try {
+        recog.start();
+        setListening(true);
+      } catch (e) {
+        console.warn("Speech start error:", e);
+        setListening(false);
+      }
+    }
+  };
+
   const sendMessage = async (text) => {
     setMessages((prev) => [...prev, { id: Date.now(), text, isUser: true }]);
     setLoading(true);
     try {
-      const response = await api.chatWithAdvisor(text);
+      const response = await api.chatWithAdvisor(text, "default", language);
       setMessages((prev) => [...prev, {
         id: Date.now() + 1, text: response.answer, isUser: false,
         powered_by: response.powered_by, model: response.model,
       }]);
+      speakResponse(response.answer);
     } catch {
       setMessages((prev) => [...prev, {
-        id: Date.now() + 1, text: "Sorry, I couldn't process that. Please try again.", isUser: false,
+        id: Date.now() + 1, text: t.error, isUser: false,
       }]);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const speakResponse = (text) => {
+    // Read back in the same language so voice-mode farmers can hear the answer
+    if (!("speechSynthesis" in window) || !text) return;
+    try {
+      window.speechSynthesis.cancel();
+      // Strip markdown noise for a cleaner read-back
+      const clean = text
+        .replace(/[#*`_>~]/g, "")
+        .replace(/\n{2,}/g, ". ")
+        .slice(0, 500);
+      const utter = new SpeechSynthesisUtterance(clean);
+      utter.lang = t.locale;
+      utter.rate = 1.0;
+      window.speechSynthesis.speak(utter);
+    } catch (e) {
+      console.warn("TTS error:", e);
     }
   };
 
@@ -91,6 +218,10 @@ export default function AiAssistant() {
     setInput("");
     sendMessage(trimmed);
   };
+
+  const voiceSupported =
+    typeof window !== "undefined" &&
+    (window.SpeechRecognition || window.webkitSpeechRecognition);
 
   return (
     <>
@@ -120,6 +251,36 @@ export default function AiAssistant() {
               </div>
             </div>
             <div className="flex items-center gap-1">
+              {/* Language toggle */}
+              <div className="relative">
+                <button
+                  onClick={() => setShowLangMenu((v) => !v)}
+                  className="text-gray-400 hover:text-greenhouse-400 p-1.5 flex items-center gap-1"
+                  title="Language"
+                >
+                  <Globe size={14} />
+                  <span className="text-[10px] uppercase">{language}</span>
+                </button>
+                {showLangMenu && (
+                  <div className="absolute right-0 top-8 z-10 bg-gray-800 border border-gray-700 rounded-lg shadow-lg py-1 min-w-[110px]">
+                    {Object.entries(LANGUAGES).map(([code, cfg]) => (
+                      <button
+                        key={code}
+                        onClick={() => {
+                          setLanguage(code);
+                          setShowLangMenu(false);
+                        }}
+                        className={`w-full text-left px-3 py-1.5 text-xs hover:bg-gray-700 ${
+                          language === code ? "text-greenhouse-400" : "text-gray-300"
+                        }`}
+                      >
+                        {cfg.label}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+
               {messages.length > 0 && (
                 <button onClick={() => { api.clearChat().catch(()=>{}); setMessages([]); }}
                   className="text-gray-500 hover:text-gray-300 p-1.5" title="Clear chat">
@@ -137,9 +298,9 @@ export default function AiAssistant() {
             {messages.length === 0 && (
               <div className="text-center py-6">
                 <Sparkles size={24} className="mx-auto text-greenhouse-400 mb-2" />
-                <p className="text-sm text-gray-400 mb-4">Ask me anything about your greenhouse</p>
+                <p className="text-sm text-gray-400 mb-4">{t.title}</p>
                 <div className="flex flex-wrap gap-1.5 justify-center">
-                  {QUICK_QUESTIONS.map((q) => (
+                  {t.quick.map((q) => (
                     <button key={q.label} onClick={() => sendMessage(q.label)}
                       className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-gray-800 border border-gray-700 text-[11px] text-gray-400 hover:text-greenhouse-400 hover:border-greenhouse-600/40 transition-colors">
                       <q.icon size={10} />{q.label}
@@ -184,7 +345,7 @@ export default function AiAssistant() {
                 <div className="bg-gray-800/80 border border-gray-700/50 rounded-xl px-3 py-2.5">
                   <div className="flex items-center gap-2">
                     <Loader2 size={12} className="animate-spin text-greenhouse-400" />
-                    <span className="text-[11px] text-gray-500">Thinking...</span>
+                    <span className="text-[11px] text-gray-500">{t.thinking}</span>
                   </div>
                 </div>
               </div>
@@ -193,8 +354,23 @@ export default function AiAssistant() {
 
           {/* Input */}
           <form onSubmit={handleSubmit} className="p-3 border-t border-gray-800 flex gap-2">
+            {voiceSupported && (
+              <button
+                type="button"
+                onClick={toggleListening}
+                disabled={loading}
+                title={listening ? t.listening : "Voice input"}
+                className={`px-3 py-2 rounded-xl border transition-colors ${
+                  listening
+                    ? "bg-red-500/20 border-red-500/40 text-red-400 animate-pulse"
+                    : "bg-gray-800 border-gray-700 text-gray-400 hover:text-greenhouse-400 hover:border-greenhouse-600/40"
+                }`}
+              >
+                {listening ? <MicOff size={14} /> : <Mic size={14} />}
+              </button>
+            )}
             <input ref={inputRef} type="text" value={input} onChange={(e) => setInput(e.target.value)}
-              placeholder="Ask anything..."
+              placeholder={listening ? t.listening : t.placeholder}
               className="flex-1 bg-gray-800 border border-gray-700 rounded-xl px-3 py-2 text-sm text-gray-200 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-greenhouse-500/50"
               disabled={loading} />
             <button type="submit" disabled={!input.trim() || loading}

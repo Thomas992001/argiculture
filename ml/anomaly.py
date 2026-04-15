@@ -70,7 +70,6 @@ class RateOfChangeDetector:
         rate_limits = {
             "temperature": 2.0,
             "humidity": 5.0,
-            "co2": 100.0,
             "soil_moisture": 5.0,
             "ec": 0.5,
             "ph": 0.3,

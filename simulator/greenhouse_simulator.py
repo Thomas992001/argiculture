@@ -3,7 +3,7 @@ Realistic greenhouse & hydroponic sensor data simulator.
 
 Generates physically plausible time-series with:
   - Diurnal cycles (day/night temperature, light, humidity)
-  - Correlated variables (T↑ → RH↓, light → CO₂ uptake)
+  - Correlated variables (T↑ → RH↓, light → transpiration)
   - Drift, noise, and occasional anomalies
   - Actuator feedback (pump on → water level rises)
 """
@@ -110,22 +110,21 @@ class GreenhouseSimulator:
 
     def _setup_sensors(self):
         sensors_config = [
-            # Greenhouse Condition (zone_air)
-            ("air_temp_1", SensorType.TEMPERATURE, "zone_air", "°C", 25.0, 5.0, 0.3, -6.0, 10.0, 45.0),
+            # Greenhouse Condition (zone_air) — 2x air humidity per spec
             ("air_rh_1", SensorType.HUMIDITY, "zone_air", "%", 65.0, 10.0, 1.5, 6.0, 20.0, 99.0),
-            ("air_light_1", SensorType.LIGHT_INTENSITY, "zone_air", "lux", 15000.0, 14000.0, 500.0, -6.0, 0.0, 100000.0),
+            ("air_rh_2", SensorType.HUMIDITY, "zone_air", "%", 63.0, 9.5, 1.7, 6.5, 20.0, 99.0),
 
-            # Substrate A (zone_bed_a)
+            # Substrate A (zone_bed_a) — soil temp x1, pH x1, moisture x1
             ("bed_a_temp", SensorType.SOIL_TEMPERATURE, "zone_bed_a", "°C", 22.0, 3.0, 0.2, -4.0, 10.0, 40.0),
             ("bed_a_ph", SensorType.SOIL_PH, "zone_bed_a", "pH", 6.2, 0.3, 0.04, 0.0, 4.0, 9.0),
             ("bed_a_moisture", SensorType.SOIL_MOISTURE, "zone_bed_a", "%", 45.0, 8.0, 1.0, 3.0, 10.0, 90.0),
 
-            # Substrate B (zone_bed_b)
+            # Substrate B (zone_bed_b) — soil temp x1, pH x1, moisture x1
             ("bed_b_temp", SensorType.SOIL_TEMPERATURE, "zone_bed_b", "°C", 23.0, 2.5, 0.25, -3.5, 10.0, 40.0),
             ("bed_b_ph", SensorType.SOIL_PH, "zone_bed_b", "pH", 6.0, 0.25, 0.05, 0.5, 4.0, 9.0),
             ("bed_b_moisture", SensorType.SOIL_MOISTURE, "zone_bed_b", "%", 48.0, 7.0, 1.2, 2.5, 10.0, 90.0),
 
-            # Substrate C (zone_bed_c)
+            # Substrate C (zone_bed_c) — soil temp x1, pH x1, moisture x1
             ("bed_c_temp", SensorType.SOIL_TEMPERATURE, "zone_bed_c", "°C", 21.5, 2.8, 0.22, -4.5, 10.0, 40.0),
             ("bed_c_ph", SensorType.SOIL_PH, "zone_bed_c", "pH", 5.9, 0.35, 0.04, -0.5, 4.0, 9.0),
             ("bed_c_moisture", SensorType.SOIL_MOISTURE, "zone_bed_c", "%", 42.0, 9.0, 0.9, 3.5, 10.0, 90.0),
@@ -147,34 +146,24 @@ class GreenhouseSimulator:
             )
 
     def _setup_actuators(self):
+        # Spec: 3x water pumps (one per substrate bed) + 2x pump driver cables
         self._actuator_states = {
             "pump_main": ActuatorState.OFF,
             "pump_nutrient": ActuatorState.OFF,
-            "fan_exhaust": ActuatorState.OFF,
-            "fan_circulation": ActuatorState.OFF,
-            "valve_irrigation": ActuatorState.OFF,
-            "heater_main": ActuatorState.OFF,
-            "light_supplemental": ActuatorState.OFF,
+            "pump_a": ActuatorState.OFF,
+            "pump_b": ActuatorState.OFF,
+            "pump_c": ActuatorState.OFF,
         }
 
     def _compute_actuator_effects(self) -> Dict[str, float]:
         effects = {}
 
-        if self._actuator_states.get("fan_exhaust") == ActuatorState.ON:
-            effects["air_temp_1"] = -2.0
-            effects["air_rh_1"] = -5.0
-
-        if self._actuator_states.get("heater_main") == ActuatorState.ON:
-            effects["air_temp_1"] = effects.get("air_temp_1", 0) + 4.0
-            effects["air_rh_1"] = effects.get("air_rh_1", 0) - 3.0
-
-        if self._actuator_states.get("valve_irrigation") == ActuatorState.ON:
-            for bed in ("bed_a_moisture", "bed_b_moisture", "bed_c_moisture"):
-                effects[bed] = effects.get(bed, 0) + 5.0
-
-        if self._actuator_states.get("light_supplemental") == ActuatorState.ON:
-            effects["air_light_1"] = 8000.0
-            effects["air_temp_1"] = effects.get("air_temp_1", 0) + 1.0
+        if self._actuator_states.get("pump_a") == ActuatorState.ON:
+            effects["bed_a_moisture"] = effects.get("bed_a_moisture", 0) + 5.0
+        if self._actuator_states.get("pump_b") == ActuatorState.ON:
+            effects["bed_b_moisture"] = effects.get("bed_b_moisture", 0) + 5.0
+        if self._actuator_states.get("pump_c") == ActuatorState.ON:
+            effects["bed_c_moisture"] = effects.get("bed_c_moisture", 0) + 5.0
 
         return effects
 

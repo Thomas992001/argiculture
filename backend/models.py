@@ -13,9 +13,7 @@ def get_now():
 # ── Sensor Types ──
 
 class SensorType(str, Enum):
-    TEMPERATURE = "temperature"
     HUMIDITY = "humidity"
-    LIGHT_INTENSITY = "light_intensity"
     SOIL_TEMPERATURE = "soil_temperature"
     SOIL_PH = "soil_ph"
     SOIL_MOISTURE = "soil_moisture"

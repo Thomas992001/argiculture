@@ -48,10 +48,10 @@ export const api = {
   getInsights: () => fetchJSON("/advisor/insights"),
   getSummary: () => fetchJSON("/advisor/summary"),
   getAdvisorStatus: () => fetchJSON("/advisor/status"),
-  chatWithAdvisor: (message, sessionId = "default") =>
+  chatWithAdvisor: (message, sessionId = "default", language = null) =>
     fetchJSON("/advisor/chat", {
       method: "POST",
-      body: JSON.stringify({ message, session_id: sessionId }),
+      body: JSON.stringify({ message, session_id: sessionId, language }),
     }),
   clearChat: (sessionId = "default") =>
     fetchJSON(`/advisor/chat/clear?session_id=${sessionId}`, { method: "POST" }),
@@ -84,6 +84,15 @@ export const api = {
   setActiveCrop: (cropName) =>
     fetchJSON(`/advisor/crop/${cropName}`, { method: "POST" }),
   getVpdInfo: () => fetchJSON("/advisor/vpd"),
+  getWeather: () => fetchJSON("/advisor/weather"),
+  refreshWeather: () => fetchJSON("/advisor/weather/refresh"),
+  getAutomationStatus: () => fetchJSON("/advisor/automation/status"),
+  setAutomationEnabled: (enabled) =>
+    fetchJSON(`/advisor/automation/enabled?enabled=${enabled ? "true" : "false"}`, {
+      method: "POST",
+    }),
+  forecastSoilConditions: (horizonHours = 4) =>
+    fetchJSON(`/advisor/forecast-soil?horizon_hours=${horizonHours}`),
   bindSimulator: (uid) =>
     fetchJSON("/simulator/bind", {
       method: "POST",

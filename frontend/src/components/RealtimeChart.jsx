@@ -12,9 +12,7 @@ import {
 } from "recharts";
 
 const COLORS = {
-  temperature: "#f87171",
   humidity: "#60a5fa",
-  light_intensity: "#facc15",
   soil_temperature: "#fb923c",
   soil_ph: "#4ade80",
   soil_moisture: "#22d3ee",
@@ -23,7 +21,7 @@ const COLORS = {
 export default function RealtimeChart({
   data = [],
   series = null,
-  sensorType = "temperature",
+  sensorType = "humidity",
   height = 200,
   showArea = true,
   title = "",

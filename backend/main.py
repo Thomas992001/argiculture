@@ -19,6 +19,7 @@ from backend.database import tsdb
 from backend.models import SensorReading, SystemStatus, get_now
 from backend.services.twin_state import twin_state
 from backend.services.rules_engine import rules_engine
+from backend.services.automation_engine import automation_engine
 from simulator.greenhouse_simulator import GreenhouseSimulator
 
 app_state = {}
@@ -66,6 +67,13 @@ def on_sensor_data(readings: List[SensorReading]):
             threshold=v.rule.warning_high or v.rule.warning_low,
         )
 
+    # Closed-loop automation: evaluates rules that actually drive actuators
+    # (e.g. hot + dry → pulse the per-bed pump)
+    try:
+        automation_engine.evaluate(readings)
+    except Exception as e:
+        print(f"[AutomationEngine] evaluate error: {e}")
+
     payload = {
         "type": "sensor_update",
         "timestamp": get_now().isoformat(),
@@ -102,6 +110,8 @@ def on_sensor_data(readings: List[SensorReading]):
 async def lifespan(app: FastAPI):
     simulator = GreenhouseSimulator()
     simulator.on_data(on_sensor_data)
+    # Let the automation engine drive simulator actuators directly
+    automation_engine.bind_simulator(simulator.set_actuator)
     app_state["simulator"] = simulator
     app_state["start_time"] = time.time()
 
