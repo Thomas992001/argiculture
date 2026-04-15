@@ -37,19 +37,16 @@ export default function OverviewPage() {
   const [bedMoistureHistories, setBedMoistureHistories] = useState({});
   const { data: rtdbData } = useRTDBData();
 
-  const fetchData = useCallback(async () => {
+  const fetchMeta = useCallback(async () => {
     try {
-      const [latest, alertsData, statusData] = await Promise.all([
-        api.getLatestReadings(),
+      const [alertsData, statusData] = await Promise.all([
         api.getAlerts(),
         api.getStatus(),
       ]);
-      setPrevData(sensorData);
-      setSensorData(latest);
       setAlerts(alertsData);
       setStatus(statusData);
     } catch (err) {
-      console.error("Failed to fetch overview data:", err);
+      console.error("Failed to fetch overview meta:", err);
     }
   }, []);
 
@@ -73,19 +70,20 @@ export default function OverviewPage() {
   }, []);
 
   useEffect(() => {
-    fetchData();
+    fetchMeta();
     fetchHistory();
     const interval = setInterval(() => {
-      fetchData();
+      fetchMeta();
       fetchHistory();
     }, 5000);
     return () => clearInterval(interval);
-  }, [fetchData, fetchHistory]);
+  }, [fetchMeta, fetchHistory]);
 
+  // Sensor data comes exclusively from RTDB
   useEffect(() => {
     if (rtdbData && Object.keys(rtdbData).length > 0) {
       setPrevData(sensorData);
-      setSensorData((prev) => ({ ...prev, ...rtdbData }));
+      setSensorData(rtdbData);
     }
   }, [rtdbData]);
 
@@ -190,7 +188,7 @@ export default function OverviewPage() {
             <h3 className="text-sm font-medium text-gray-400 mb-3">
               Recent Alerts
             </h3>
-            <AlertPanel alerts={alerts} onRefresh={fetchData} />
+            <AlertPanel alerts={alerts} onRefresh={fetchMeta} />
           </div>
         </div>
       </div>

@@ -79,28 +79,16 @@ export default function SensorsPage() {
     }
   }, [selectedZone, selectedSensor, timeWindow, isSubstrateBed]);
 
-  const fetchLatest = useCallback(async () => {
-    try {
-      const data = await api.getLatestReadings();
-      setSensorData(data);
-    } catch {
-      // ignore
-    }
-  }, []);
-
   useEffect(() => {
     fetchHistory();
-    fetchLatest();
-    const interval = setInterval(() => {
-      fetchHistory();
-      fetchLatest();
-    }, 5000);
+    const interval = setInterval(fetchHistory, 5000);
     return () => clearInterval(interval);
-  }, [fetchHistory, fetchLatest]);
+  }, [fetchHistory]);
 
+  // Sensor data comes exclusively from RTDB
   useEffect(() => {
     if (rtdbData && Object.keys(rtdbData).length > 0) {
-      setSensorData((prev) => ({ ...prev, ...rtdbData }));
+      setSensorData(rtdbData);
     }
   }, [rtdbData]);
 

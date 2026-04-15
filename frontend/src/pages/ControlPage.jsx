@@ -55,7 +55,7 @@ export default function ControlPage() {
 
       console.log("DEBUG: Starting Firestore listener for UID:", user.uid);
       const controlRef = doc(db, "users", user.uid, "control", "latest");
-      
+
       unsubscribeSnapshot = onSnapshot(controlRef, (snapshot) => {
         const data = snapshot.data();
         if (data) {

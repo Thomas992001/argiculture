@@ -1,6 +1,5 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect } from "react";
 import { Thermometer, Droplets, Sun, ArrowLeft } from "lucide-react";
-import { api } from "../api/client";
 import { useRTDBData } from "../hooks/useRTDBData";
 import VirtualGreenhouse from "../components/VirtualGreenhouse";
 import SensorCard from "../components/SensorCard";
@@ -14,30 +13,11 @@ const BED_META = {
 };
 
 export default function GreenhousePage() {
-  const [sensorData, setSensorData] = useState({});
   const [selectedBed, setSelectedBed] = useState(null);
   const { data: rtdbData } = useRTDBData();
 
-  const fetchData = useCallback(async () => {
-    try {
-      const latest = await api.getLatestReadings();
-      setSensorData(latest);
-    } catch {
-      // ignore
-    }
-  }, []);
-
-  useEffect(() => {
-    fetchData();
-    const interval = setInterval(fetchData, 5000);
-    return () => clearInterval(interval);
-  }, [fetchData]);
-
-  useEffect(() => {
-    if (rtdbData && Object.keys(rtdbData).length > 0) {
-      setSensorData((prev) => ({ ...prev, ...rtdbData }));
-    }
-  }, [rtdbData]);
+  // Sensor data comes exclusively from RTDB
+  const sensorData = rtdbData || {};
 
   const temp = sensorData["zone_air:temperature"]?.value;
   const humidity = sensorData["zone_air:humidity"]?.value;
