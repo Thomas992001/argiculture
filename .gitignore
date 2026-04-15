@@ -6,10 +6,6 @@ dist/
 build/
 .env
 
-# Firebase service account (never commit)
-**/firebase-adminsdk*.json
-**/agritwin-*-firebase-adminsdk*.json
-
 # Node
 frontend/node_modules/
 frontend/dist/

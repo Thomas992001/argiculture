@@ -3,10 +3,10 @@ from firebase_admin import credentials, db, firestore
 from datetime import datetime, timezone, timedelta
 import os
 
-# Path to the service account JSON (set FIREBASE_SERVICE_ACCOUNT_PATH or place file next to this module)
-SERVICE_ACCOUNT_PATH = os.environ.get(
-    "FIREBASE_SERVICE_ACCOUNT_PATH",
-    os.path.join(os.path.dirname(__file__), "agritwin-mrv-firebase-adminsdk-fbsvc-cb08135bf7.json"),
+# Service account key (committed with repo — same folder as this file)
+SERVICE_ACCOUNT_PATH = os.path.join(
+    os.path.dirname(__file__),
+    "agritwin-mrv-firebase-adminsdk-fbsvc-cb08135bf7.json",
 )
 DATABASE_URL = "https://agritwin-mrv-default-rtdb.firebaseio.com/"
 
