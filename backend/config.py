@@ -17,7 +17,7 @@ class Settings(BaseSettings):
     influxdb_bucket: str = "telemetry"
 
     simulator_interval_seconds: float = 5.0
-    simulator_enabled: bool = True
+    simulator_enabled: bool = False
 
     ml_forecast_horizon_minutes: int = 60
     ml_anomaly_sensitivity: float = 0.05

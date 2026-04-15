@@ -6,7 +6,7 @@ import {
   AlertTriangle,
   Server,
   Sparkles,
-  Beaker,
+  Radio,
   Sun,
   Cloud,
   CloudRain,
@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import { api } from "../api/client";
 import { useRTDBData } from "../hooks/useRTDBData";
+import { useControlStates } from "../hooks/useControlStates";
 import SensorCard from "../components/SensorCard";
 import RealtimeChart from "../components/RealtimeChart";
 import AlertPanel from "../components/AlertPanel";
@@ -43,6 +44,7 @@ export default function OverviewPage() {
   const [bedMoistureHistories, setBedMoistureHistories] = useState({});
   const [weather, setWeather] = useState(null);
   const { data: rtdbData } = useRTDBData();
+  const { activeSensorCount } = useControlStates();
 
   const fetchMeta = useCallback(async () => {
     try {
@@ -199,14 +201,15 @@ export default function OverviewPage() {
           formatLarge
         />
         <GlowCard
-          icon={Beaker}
-          label="Avg Soil pH"
-          value={getAvg(sensorData, "soil_ph")}
-          unit=""
-          gradient="from-green-500/20 to-emerald-500/10"
-          iconColor="text-green-400"
-          valueColor="text-green-300"
-          borderColor="border-green-500/20"
+          icon={Radio}
+          label="Active Sensors"
+          value={activeSensorCount}
+          unit={`/ 13`}
+          gradient="from-purple-500/20 to-indigo-500/10"
+          iconColor="text-purple-400"
+          valueColor="text-purple-300"
+          borderColor="border-purple-500/20"
+          isInteger
         />
         <GlowCard
           icon={AlertTriangle}
