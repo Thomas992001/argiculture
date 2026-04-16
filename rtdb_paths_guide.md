@@ -13,54 +13,83 @@
 ### Base Path
 
 ```
-users/{uid}/live/latest/
+users/{uid}/live/
 ```
 
 > `{uid}` = 登录用户的 Firebase Auth UID（例如 `ZLwjf4x1vBPkcEHc015OhelwwHo1`）
 
 ---
 
-### 所有 Sensor Key 及其数据结构
+### Latest（实时数据）
 
-硬件需要 **update** 以下 12 个 key 到 `users/{uid}/live/latest/` 路径下：
+路径：`users/{uid}/live/latest/`
+
+硬件需要 **update** 以下 13 个 key：
 
 #### Greenhouse Condition（温室空气环境）
 
-| RTDB Key | 传感器 | 单位 | 典型范围 |
-|----------|--------|------|----------|
-| `zone_air:temperature` | 空气温度 | °C | 10 ~ 45 |
-| `zone_air:humidity` | 空气湿度 | % | 20 ~ 99 |
-| `zone_air:light_intensity` | 光照强度 | lux | 0 ~ 100000 |
+| # | RTDB Key | sensor_id | sensor_type | 传感器 | 单位 | 典型范围 |
+|---|----------|-----------|-------------|--------|------|----------|
+| 1 | `zone_air:air_rh_1` | `air_rh_1` | `humidity` | 空气湿度传感器 1 | % | 20 ~ 99 |
+| 2 | `zone_air:air_rh_2` | `air_rh_2` | `humidity` | 空气湿度传感器 2 | % | 20 ~ 99 |
+| 3 | `zone_air:air_temp_1` | `air_temp_1` | `temperature` | 空气温度传感器 | °C | 10 ~ 45 |
+| 4 | `zone_air:air_light_1` | `air_light_1` | `light_intensity` | 光照传感器 | lux | 0 ~ 100000 |
 
 #### Substrate Bed A（基质床 A）
 
-| RTDB Key | 传感器 | 单位 | 典型范围 |
-|----------|--------|------|----------|
-| `zone_bed_a:soil_temperature` | 土壤温度 | °C | 10 ~ 40 |
-| `zone_bed_a:soil_ph` | 土壤 pH 值 | pH | 4.0 ~ 9.0 |
-| `zone_bed_a:soil_moisture` | 土壤湿度 | % | 10 ~ 90 |
+| # | RTDB Key | sensor_id | sensor_type | 传感器 | 单位 | 典型范围 |
+|---|----------|-----------|-------------|--------|------|----------|
+| 5 | `zone_bed_a:bed_a_temp` | `bed_a_temp` | `soil_temperature` | 土壤温度 | °C | 10 ~ 40 |
+| 6 | `zone_bed_a:bed_a_ph` | `bed_a_ph` | `soil_ph` | 土壤 pH | pH | 4.0 ~ 9.0 |
+| 7 | `zone_bed_a:bed_a_moisture` | `bed_a_moisture` | `soil_moisture` | 土壤湿度 | % | 10 ~ 90 |
 
 #### Substrate Bed B（基质床 B）
 
-| RTDB Key | 传感器 | 单位 | 典型范围 |
-|----------|--------|------|----------|
-| `zone_bed_b:soil_temperature` | 土壤温度 | °C | 10 ~ 40 |
-| `zone_bed_b:soil_ph` | 土壤 pH 值 | pH | 4.0 ~ 9.0 |
-| `zone_bed_b:soil_moisture` | 土壤湿度 | % | 10 ~ 90 |
+| # | RTDB Key | sensor_id | sensor_type | 传感器 | 单位 | 典型范围 |
+|---|----------|-----------|-------------|--------|------|----------|
+| 8 | `zone_bed_b:bed_b_temp` | `bed_b_temp` | `soil_temperature` | 土壤温度 | °C | 10 ~ 40 |
+| 9 | `zone_bed_b:bed_b_ph` | `bed_b_ph` | `soil_ph` | 土壤 pH | pH | 4.0 ~ 9.0 |
+| 10 | `zone_bed_b:bed_b_moisture` | `bed_b_moisture` | `soil_moisture` | 土壤湿度 | % | 10 ~ 90 |
 
 #### Substrate Bed C（基质床 C）
 
-| RTDB Key | 传感器 | 单位 | 典型范围 |
-|----------|--------|------|----------|
-| `zone_bed_c:soil_temperature` | 土壤温度 | °C | 10 ~ 40 |
-| `zone_bed_c:soil_ph` | 土壤 pH 值 | pH | 4.0 ~ 9.0 |
-| `zone_bed_c:soil_moisture` | 土壤湿度 | % | 10 ~ 90 |
+| # | RTDB Key | sensor_id | sensor_type | 传感器 | 单位 | 典型范围 |
+|---|----------|-----------|-------------|--------|------|----------|
+| 11 | `zone_bed_c:bed_c_temp` | `bed_c_temp` | `soil_temperature` | 土壤温度 | °C | 10 ~ 40 |
+| 12 | `zone_bed_c:bed_c_ph` | `bed_c_ph` | `soil_ph` | 土壤 pH | pH | 4.0 ~ 9.0 |
+| 13 | `zone_bed_c:bed_c_moisture` | `bed_c_moisture` | `soil_moisture` | 土壤湿度 | % | 10 ~ 90 |
+
+---
+
+### History（历史数据，图表用）
+
+路径：`users/{uid}/live/history/{zone_id}/{sensor_id}/`
+
+每次写入 latest 时，**同时 push 一条到 history**，前端图表才有数据。
+
+| # | History 路径 | 说明 |
+|---|-------------|------|
+| 1 | `history/zone_air/air_rh_1/` | 湿度传感器 1 历史 |
+| 2 | `history/zone_air/air_rh_2/` | 湿度传感器 2 历史 |
+| 3 | `history/zone_air/air_temp_1/` | 温度传感器历史 |
+| 4 | `history/zone_air/air_light_1/` | 光照传感器历史 |
+| 5 | `history/zone_bed_a/bed_a_temp/` | Bed A 温度历史 |
+| 6 | `history/zone_bed_a/bed_a_ph/` | Bed A pH 历史 |
+| 7 | `history/zone_bed_a/bed_a_moisture/` | Bed A 湿度历史 |
+| 8 | `history/zone_bed_b/bed_b_temp/` | Bed B 温度历史 |
+| 9 | `history/zone_bed_b/bed_b_ph/` | Bed B pH 历史 |
+| 10 | `history/zone_bed_b/bed_b_moisture/` | Bed B 湿度历史 |
+| 11 | `history/zone_bed_c/bed_c_temp/` | Bed C 温度历史 |
+| 12 | `history/zone_bed_c/bed_c_ph/` | Bed C pH 历史 |
+| 13 | `history/zone_bed_c/bed_c_moisture/` | Bed C 湿度历史 |
+
+> History 下每条记录用 `push()` 写入（自动生成唯一 key），格式跟 latest 的 JSON 一样。
 
 ---
 
 ### 每个 Key 的 JSON 数据格式
 
-硬件写入时，每个 key 的值必须是以下结构的 JSON object：
+Latest 和 History 用**同一个格式**：
 
 ```json
 {
@@ -76,13 +105,13 @@ users/{uid}/live/latest/
 
 | 字段 | 类型 | 说明 |
 |------|------|------|
-| `sensor_id` | string | 传感器唯一标识，自定义即可 |
-| `sensor_type` | string | **必须**和 key 的冒号后半部分一致（如 `soil_temperature`） |
-| `zone_id` | string | **必须**和 key 的冒号前半部分一致（如 `zone_bed_a`） |
+| `sensor_id` | string | 传感器 ID，**必须跟表格里的 sensor_id 一致** |
+| `sensor_type` | string | 传感器类型，**必须跟表格里的 sensor_type 一致** |
+| `zone_id` | string | 区域 ID，**必须跟 RTDB key 冒号前面的部分一致** |
 | `value` | number | 传感器读数 |
 | `unit` | string | 单位（`°C`, `%`, `lux`, `pH`） |
 | `timestamp` | string | ISO 8601 格式，带时区（UTC+8） |
-| `quality` | number | 数据质量 0.0~1.0，正常传 `1.0`，传感器异常传低值 |
+| `quality` | number | 数据质量 0.0~1.0，正常传 `1.0`，异常传低值 |
 
 ---
 
@@ -90,9 +119,10 @@ users/{uid}/live/latest/
 
 ```cpp
 // Firebase ESP32 Client Library
-String basePath = "users/" + uid + "/live/latest/";
+String uid = "ZLwjf4x1vBPkcEHc015OhelwwHo1";
+String basePath = "users/" + uid + "/live/";
 
-// 写入空气温度
+// ── 写入 latest（实时值）──
 FirebaseJson json;
 json.set("sensor_id", "air_temp_1");
 json.set("sensor_type", "temperature");
@@ -102,7 +132,10 @@ json.set("unit", "°C");
 json.set("timestamp", getISO8601Time());
 json.set("quality", 1.0);
 
-Firebase.RTDB.updateNode(&fbdo, basePath + "zone_air:temperature", &json);
+Firebase.RTDB.updateNode(&fbdo, basePath + "latest/zone_air:air_temp_1", &json);
+
+// ── 同时 push 到 history（图表数据）──
+Firebase.RTDB.pushJSON(&fbdo, basePath + "history/zone_air/air_temp_1", &json);
 ```
 
 ---
@@ -132,33 +165,38 @@ agritwin-mrv-default-rtdb.firebaseio.com/
 └── users/
     └── {uid}/
         └── live/
-            ├── latest/                          ← 前端实时读取这里
-            │   ├── zone_air:temperature         ← { value, unit, quality, ... }
-            │   ├── zone_air:humidity
-            │   ├── zone_air:light_intensity
-            │   ├── zone_bed_a:soil_temperature
-            │   ├── zone_bed_a:soil_ph
-            │   ├── zone_bed_a:soil_moisture
-            │   ├── zone_bed_b:soil_temperature
-            │   ├── zone_bed_b:soil_ph
-            │   ├── zone_bed_b:soil_moisture
-            │   ├── zone_bed_c:soil_temperature
-            │   ├── zone_bed_c:soil_ph
-            │   └── zone_bed_c:soil_moisture
-            └── history/                         ← 后端写入历史（图表用）
+            ├── latest/                              ← 前端实时读取
+            │   ├── zone_air:air_rh_1               ← { sensor_id, sensor_type, value, unit, timestamp, quality }
+            │   ├── zone_air:air_rh_2
+            │   ├── zone_air:air_temp_1
+            │   ├── zone_air:air_light_1
+            │   ├── zone_bed_a:bed_a_temp
+            │   ├── zone_bed_a:bed_a_ph
+            │   ├── zone_bed_a:bed_a_moisture
+            │   ├── zone_bed_b:bed_b_temp
+            │   ├── zone_bed_b:bed_b_ph
+            │   ├── zone_bed_b:bed_b_moisture
+            │   ├── zone_bed_c:bed_c_temp
+            │   ├── zone_bed_c:bed_c_ph
+            │   └── zone_bed_c:bed_c_moisture
+            └── history/                             ← 前端图表读取
                 ├── zone_air/
-                │   ├── temperature/
-                │   ├── humidity/
-                │   └── light_intensity/
+                │   ├── air_rh_1/{push_key}: {...}
+                │   ├── air_rh_2/{push_key}: {...}
+                │   ├── air_temp_1/{push_key}: {...}
+                │   └── air_light_1/{push_key}: {...}
                 ├── zone_bed_a/
-                │   ├── soil_temperature/
-                │   ├── soil_ph/
-                │   └── soil_moisture/
+                │   ├── bed_a_temp/{push_key}: {...}
+                │   ├── bed_a_ph/{push_key}: {...}
+                │   └── bed_a_moisture/{push_key}: {...}
                 ├── zone_bed_b/
-                │   └── ...
+                │   ├── bed_b_temp/{push_key}: {...}
+                │   ├── bed_b_ph/{push_key}: {...}
+                │   └── bed_b_moisture/{push_key}: {...}
                 └── zone_bed_c/
-                    └── ...
+                    ├── bed_c_temp/{push_key}: {...}
+                    ├── bed_c_ph/{push_key}: {...}
+                    └── bed_c_moisture/{push_key}: {...}
 ```
 
-> [!IMPORTANT]
-> 硬件只需要写 `latest/` 路径。`history/` 由后端 `database.py` 自动从 latest 复制过去（如果后端在跑的话）。如果后端不跑，前端图表将没有历史数据，但实时数值卡片正常。
+> **Key 格式规则**：RTDB key 统一用 `{zone_id}:{sensor_id}`，History 路径用 `{zone_id}/{sensor_id}/`。

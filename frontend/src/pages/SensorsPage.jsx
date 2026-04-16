@@ -3,6 +3,7 @@ import { useSearchParams } from "react-router-dom";
 import { Brain, Zap } from "lucide-react";
 import { api } from "../api/client";
 import { useRTDBData } from "../hooks/useRTDBData";
+import { useRTDBHistory } from "../hooks/useRTDBHistory";
 import SensorCard from "../components/SensorCard";
 import { entriesForBedZone, entriesForZoneAir } from "../utils/bedSensorKeys";
 import RealtimeChart from "../components/RealtimeChart";
@@ -75,8 +76,6 @@ export default function SensorsPage() {
 
   const [selectedZone, setSelectedZone] = useState(initialZone);
   const [selectedSensor, setSelectedSensor] = useState(initialSensor);
-  const [history, setHistory] = useState([]);
-  const [bedHistories, setBedHistories] = useState({});
   const [stats, setStats] = useState(null);
   const [sensorData, setSensorData] = useState({});
   const [timeWindow, setTimeWindow] = useState(30);
@@ -86,6 +85,12 @@ export default function SensorsPage() {
 
   const isSubstrateBed = selectedZone === "zone_bed";
   const sensorTypes = SENSOR_TYPES_BY_ZONE[selectedZone] || [];
+
+  // Chart history — directly from RTDB
+  const { data: histAir } = useRTDBHistory("zone_air", selectedSensor, timeWindow);
+  const { data: histBedA } = useRTDBHistory("zone_bed_a", selectedSensor, timeWindow);
+  const { data: histBedB } = useRTDBHistory("zone_bed_b", selectedSensor, timeWindow);
+  const { data: histBedC } = useRTDBHistory("zone_bed_c", selectedSensor, timeWindow);
 
   // Handle navigation with flash highlight
   useEffect(() => {
@@ -115,70 +120,29 @@ export default function SensorsPage() {
     if (firstType && !searchParams.get("sensor")) setSelectedSensor(firstType);
   }, [selectedZone]);
 
-  const fetchHistory = useCallback(async () => {
+  // Stats still come from backend API (Gemini-powered)
+  const fetchStats = useCallback(async () => {
     try {
-      if (isSubstrateBed) {
-        const results = await Promise.all(
-          BED_ZONES.map((bed) =>
-            api.getSensorHistory(bed.value, selectedSensor, timeWindow)
-          )
-        );
-        const histories = {};
-        BED_ZONES.forEach((bed, i) => {
-          histories[bed.value] = results[i];
-        });
-        setBedHistories(histories);
-
-        const statsData = await api.getStatistics(
-          BED_ZONES[0].value,
-          selectedSensor
-        );
-        setStats(statsData);
-      } else {
-        let histData = await api.getSensorHistory(
-          selectedZone,
-          selectedSensor,
-          timeWindow
-        );
-        let statsData = await api.getStatistics(
-          selectedZone,
-          selectedSensor
-        );
-        if (
-          selectedSensor === "light" &&
-          selectedZone === "zone_air" &&
-          (!histData || histData.length === 0)
-        ) {
-          try {
-            const [h2, s2] = await Promise.all([
-              api.getSensorHistory(
-                selectedZone,
-                "light_intensity",
-                timeWindow
-              ),
-              api.getStatistics(selectedZone, "light_intensity"),
-            ]);
-            if (h2 && h2.length > 0) {
-              histData = h2;
-              statsData = s2;
-            }
-          } catch {
-            // keep primary result
-          }
-        }
-        setHistory(histData);
-        setStats(statsData);
+      const zone = isSubstrateBed ? BED_ZONES[0].value : selectedZone;
+      let statsData = await api.getStatistics(zone, selectedSensor);
+      if (
+        selectedSensor === "light" &&
+        selectedZone === "zone_air" &&
+        !statsData?.mean
+      ) {
+        try {
+          statsData = await api.getStatistics(selectedZone, "light_intensity");
+        } catch { /* ignore */ }
       }
-    } catch {
-      // ignore
-    }
-  }, [selectedZone, selectedSensor, timeWindow, isSubstrateBed]);
+      setStats(statsData);
+    } catch { /* ignore */ }
+  }, [selectedZone, selectedSensor, isSubstrateBed]);
 
   useEffect(() => {
-    fetchHistory();
-    const interval = setInterval(fetchHistory, 5000);
+    fetchStats();
+    const interval = setInterval(fetchStats, 15000);
     return () => clearInterval(interval);
-  }, [fetchHistory]);
+  }, [fetchStats]);
 
   useEffect(() => {
     if (rtdbData && Object.keys(rtdbData).length > 0) {
@@ -201,12 +165,13 @@ export default function SensorsPage() {
         }))
     : buildGreenhouseZoneReadings(sensorData, allowedTypes);
 
+  const history = isSubstrateBed ? [] : histAir;
   const bedSeries = isSubstrateBed
-    ? BED_ZONES.map((bed) => ({
-        label: bed.label,
-        data: bedHistories[bed.value] || [],
-        color: bed.color,
-      }))
+    ? [
+        { label: "Substrate A", data: histBedA, color: "#22c55e" },
+        { label: "Substrate B", data: histBedB, color: "#3b82f6" },
+        { label: "Substrate C", data: histBedC, color: "#f59e0b" },
+      ]
     : [];
 
   const sensorLabel =

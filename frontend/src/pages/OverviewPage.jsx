@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
+import { useRTDBHistory } from "../hooks/useRTDBHistory";
 import {
   Activity,
   Thermometer,
@@ -40,11 +41,15 @@ export default function OverviewPage() {
   const [prevData, setPrevData] = useState({});
   const [alerts, setAlerts] = useState([]);
   const [status, setStatus] = useState(null);
-  const [airHistory, setAirHistory] = useState([]);
-  const [bedMoistureHistories, setBedMoistureHistories] = useState({});
   const [weather, setWeather] = useState(null);
   const { data: rtdbData } = useRTDBData();
   const { activeSensorCount } = useControlStates();
+
+  // Chart history — directly from RTDB (works without backend simulator)
+  const { data: airHistory } = useRTDBHistory("zone_air", "humidity", 30);
+  const { data: bedAHistory } = useRTDBHistory("zone_bed_a", "soil_moisture", 30);
+  const { data: bedBHistory } = useRTDBHistory("zone_bed_b", "soil_moisture", 30);
+  const { data: bedCHistory } = useRTDBHistory("zone_bed_c", "soil_moisture", 30);
 
   const fetchMeta = useCallback(async () => {
     try {
@@ -59,25 +64,6 @@ export default function OverviewPage() {
     }
   }, []);
 
-  const fetchHistory = useCallback(async () => {
-    try {
-      const [airHist, ...bedHists] = await Promise.all([
-        api.getSensorHistory("zone_air", "humidity", 30),
-        ...BED_ZONES.map((bed) =>
-          api.getSensorHistory(bed.value, "soil_moisture", 30)
-        ),
-      ]);
-      setAirHistory(airHist);
-      const histories = {};
-      BED_ZONES.forEach((bed, i) => {
-        histories[bed.value] = bedHists[i];
-      });
-      setBedMoistureHistories(histories);
-    } catch {
-      // ignore
-    }
-  }, []);
-
   const fetchWeather = useCallback(async () => {
     try {
       const data = await api.getWeather();
@@ -89,18 +75,14 @@ export default function OverviewPage() {
 
   useEffect(() => {
     fetchMeta();
-    fetchHistory();
     fetchWeather();
-    const interval = setInterval(() => {
-      fetchMeta();
-      fetchHistory();
-    }, 5000);
+    const interval = setInterval(fetchMeta, 5000);
     const weatherInterval = setInterval(fetchWeather, 300000);
     return () => {
       clearInterval(interval);
       clearInterval(weatherInterval);
     };
-  }, [fetchMeta, fetchHistory, fetchWeather]);
+  }, [fetchMeta, fetchWeather]);
 
   useEffect(() => {
     if (rtdbData && Object.keys(rtdbData).length > 0) {
@@ -135,11 +117,11 @@ export default function OverviewPage() {
   }
   const airReadings = Array.from(bySensorType.values());
 
-  const bedMoistureSeries = BED_ZONES.map((bed) => ({
-    label: bed.label,
-    data: bedMoistureHistories[bed.value] || [],
-    color: bed.color,
-  }));
+  const bedMoistureSeries = [
+    { label: "Substrate A", data: bedAHistory, color: "#22c55e" },
+    { label: "Substrate B", data: bedBHistory, color: "#3b82f6" },
+    { label: "Substrate C", data: bedCHistory, color: "#f59e0b" },
+  ];
 
   return (
     <div className="space-y-6">
@@ -457,17 +439,25 @@ function WeatherWidget({ weather }) {
   );
 }
 
-function getAvg(sensorData, sensorType) {
-  const values = Object.entries(sensorData)
-    .filter(([key]) => {
-      const t = key.split(":")[1];
-      if (sensorType === "light") {
-        return t === "light" || t === "light_intensity";
-      }
-      return key.endsWith(`:${sensorType}`);
-    })
-    .map(([, r]) => r.value)
-    .filter((v) => v != null);
+function getAvg(sensorData, targetType) {
+  const seen = new Set();
+  const values = [];
+  for (const [key, r] of Object.entries(sensorData)) {
+    if (!r || typeof r !== "object" || r.value == null) continue;
+    if (!key.startsWith("zone_air:")) continue;
+    const st =
+      typeof r.sensor_type === "string"
+        ? r.sensor_type
+        : r.sensor_type?.value;
+    const t = st === "light_intensity" ? "light" : st;
+    if (t !== targetType) continue;
+    // Deduplicate by sensor_id so zone_air:air_rh_1 and zone_air:humidity
+    // (same reading) aren't counted twice
+    const id = r.sensor_id || key;
+    if (seen.has(id)) continue;
+    seen.add(id);
+    values.push(r.value);
+  }
   if (values.length === 0) return 0;
   return values.reduce((a, b) => a + b, 0) / values.length;
 }
