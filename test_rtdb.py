@@ -22,7 +22,7 @@ SERVICE_ACCOUNT = os.path.join(
     "agritwin-mrv-firebase-adminsdk-fbsvc-cb08135bf7.json"
 )
 DATABASE_URL = "https://agritwin-mrv-default-rtdb.firebaseio.com/"
-UID = "ZLwjf4x1vBPkcEHc015OhelwwHo1"
+UID = "N8HUYS5jzCdVEh32vZEnagneGnP2"
 
 if not firebase_admin._apps:
     cred = credentials.Certificate(SERVICE_ACCOUNT)
