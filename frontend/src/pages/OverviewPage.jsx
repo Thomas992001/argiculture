@@ -153,7 +153,7 @@ export default function OverviewPage() {
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
         <GlowCard
           icon={Thermometer}
-          label="Air Temperature"
+          label="Average Air Temperature"
           value={getAvg(sensorData, "temperature")}
           unit="°C"
           gradient="from-red-500/20 to-orange-500/10"
@@ -163,7 +163,7 @@ export default function OverviewPage() {
         />
         <GlowCard
           icon={Droplets}
-          label="Air Humidity"
+          label="Average Air Humidity"
           value={getAvg(sensorData, "humidity")}
           unit="%"
           gradient="from-blue-500/20 to-cyan-500/10"
@@ -173,7 +173,7 @@ export default function OverviewPage() {
         />
         <GlowCard
           icon={Sun}
-          label="Light Level"
+          label="Average Light Level"
           value={getAvg(sensorData, "light")}
           unit="lux"
           gradient="from-yellow-500/20 to-amber-500/10"

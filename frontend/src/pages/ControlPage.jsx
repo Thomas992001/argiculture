@@ -48,8 +48,12 @@ const UNIT_MAP = {
 
 
 function resolveReading(sensorData, sensor) {
-  const sensorKey = `${sensor.zone}:${sensor.type}`;
-  let reading = sensorData[sensorKey];
+  // Try exact device key first (zone:sensor_id), e.g. zone_air:air_rh_1
+  let reading = sensorData[`${sensor.zone}:${sensor.id}`];
+  // Fall back to zone:type for backwards compat
+  if (reading?.value == null) {
+    reading = sensorData[`${sensor.zone}:${sensor.type}`];
+  }
   if (
     sensor.type === "light" &&
     (reading?.value == null || reading?.value === undefined)
