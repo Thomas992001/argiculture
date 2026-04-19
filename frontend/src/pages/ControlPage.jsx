@@ -1,16 +1,20 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import {
   Wifi,
   WifiOff,
   CircleDot,
   Loader2,
   AlertOctagon,
+  AlertCircle,
+  AlertTriangle,
+  Sparkles,
 } from "lucide-react";
 import { api } from "../api/client";
 import { onAuthStateChanged } from "firebase/auth";
 import { db, auth } from "../firebase";
 import { onSnapshot, doc, setDoc } from "firebase/firestore";
 import { useRTDBData } from "../hooks/useRTDBData";
+import { useAlerts } from "../contexts/AlertsProvider";
 import AlertPanel from "../components/AlertPanel";
 import {
   SENSOR_DEVICE_DEFS,
@@ -173,15 +177,30 @@ function SensorPowerRow({ sensor, sensorData, cloudStates, onToggle }) {
 
 export default function ControlPage() {
   const [cloudStates, setCloudStates] = useState({});
-  const [alerts, setAlerts] = useState([]);
+  const [backendAlerts, setBackendAlerts] = useState([]);
   const { data: rtdbData } = useRTDBData();
+  const {
+    alerts: anomalyAlerts,
+    topAlert,
+    attentionNeeded,
+    criticalCount,
+    warningCount,
+  } = useAlerts();
 
   const sensorData = rtdbData || {};
+
+  const mergedAlerts = useMemo(() => {
+    const covered = new Set(anomalyAlerts.map((a) => a.sensor_id));
+    const extras = (backendAlerts || []).filter(
+      (a) => !a.sensor_id || !covered.has(a.sensor_id)
+    );
+    return [...anomalyAlerts, ...extras];
+  }, [anomalyAlerts, backendAlerts]);
 
   const fetchAlerts = async () => {
     try {
       const alertsData = await api.getAlerts();
-      setAlerts(alertsData);
+      setBackendAlerts(alertsData || []);
     } catch { }
   };
 
@@ -275,6 +294,14 @@ export default function ControlPage() {
         </p>
       </div>
 
+      {attentionNeeded && topAlert && (
+        <ControlAttentionBanner
+          alert={topAlert}
+          criticalCount={criticalCount}
+          warningCount={warningCount}
+        />
+      )}
+
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-2 space-y-6">
           <div>
@@ -326,8 +353,87 @@ export default function ControlPage() {
         </div>
 
         <div>
-          <h3 className="text-sm font-medium text-gray-400 mb-3">Alerts</h3>
-          <AlertPanel alerts={alerts} onRefresh={fetchAlerts} />
+          <h3 className="text-sm font-medium text-gray-400 mb-3 flex items-center gap-2">
+            Alerts
+            {mergedAlerts.length > 0 && (
+              <span className="text-[10px] px-2 py-0.5 rounded-full bg-red-500/15 border border-red-500/30 text-red-300">
+                {mergedAlerts.length} active
+              </span>
+            )}
+          </h3>
+          <AlertPanel alerts={mergedAlerts} onRefresh={fetchAlerts} />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ControlAttentionBanner({ alert, criticalCount, warningCount }) {
+  const isCritical = alert.severity === "critical";
+  const Icon = isCritical ? AlertCircle : AlertTriangle;
+  const palette = isCritical
+    ? {
+        bg: "from-red-500/15 via-rose-500/10 to-orange-500/5",
+        border: "border-red-500/30",
+        ring: "ring-red-500/30",
+        icon: "text-red-300",
+        title: "text-red-200",
+        glow: "bg-red-500/20",
+      }
+    : {
+        bg: "from-yellow-500/15 via-amber-500/10 to-orange-500/5",
+        border: "border-yellow-500/30",
+        ring: "ring-yellow-500/25",
+        icon: "text-yellow-300",
+        title: "text-yellow-200",
+        glow: "bg-yellow-500/20",
+      };
+
+  const unit = alert.unit || "";
+
+  return (
+    <div
+      className={`relative overflow-hidden rounded-2xl border ${palette.border} bg-gradient-to-br ${palette.bg} backdrop-blur-sm ring-1 ${palette.ring} p-4 animate-slide-up`}
+    >
+      <div className={`absolute -top-12 -right-12 w-40 h-40 rounded-full blur-3xl ${palette.glow}`} />
+      <div className="relative flex items-start gap-4">
+        <div className={`shrink-0 w-10 h-10 rounded-xl ${palette.glow} flex items-center justify-center`}>
+          <Icon size={20} className={palette.icon} />
+        </div>
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 flex-wrap">
+            <p className={`text-sm font-semibold ${palette.title}`}>
+              {alert.sensor_id} needs attention
+            </p>
+            <span className="text-[9px] uppercase tracking-wider font-bold px-2 py-0.5 rounded-full bg-black/40 text-white">
+              {alert.severity}
+            </span>
+          </div>
+          <p className="text-[13px] text-gray-200 mt-1">{alert.message}</p>
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mt-1.5 text-[11px] text-gray-400">
+            {alert.value != null && (
+              <span>
+                Current: <span className="text-white font-medium">{alert.value.toFixed(1)}{unit && ` ${unit}`}</span>
+              </span>
+            )}
+            {alert.expected_min != null && alert.expected_max != null && (
+              <span>Expected: {alert.expected_min}–{alert.expected_max}{unit && ` ${unit}`}</span>
+            )}
+            {alert.zone_id && <span>Zone: {alert.zone_id}</span>}
+            {(criticalCount + warningCount > 1) && (
+              <span className="text-gray-300">
+                +{criticalCount + warningCount - 1} more
+              </span>
+            )}
+          </div>
+          {alert.suggestion && (
+            <div className="mt-3 flex items-start gap-2 p-3 rounded-xl bg-white/[0.06] border border-white/10">
+              <Sparkles size={14} className="text-amber-300 mt-0.5 shrink-0" />
+              <p className="text-[12px] text-gray-200 leading-relaxed">
+                {alert.suggestion}
+              </p>
+            </div>
+          )}
         </div>
       </div>
     </div>

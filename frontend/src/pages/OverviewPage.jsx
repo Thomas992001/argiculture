@@ -1,10 +1,11 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { useRTDBHistory } from "../hooks/useRTDBHistory";
 import {
   Activity,
   Thermometer,
   Droplets,
   AlertTriangle,
+  AlertCircle,
   Server,
   Sparkles,
   Radio,
@@ -17,6 +18,7 @@ import {
 import { api } from "../api/client";
 import { useRTDBData } from "../hooks/useRTDBData";
 import { useControlStates } from "../hooks/useControlStates";
+import { useAlerts } from "../contexts/AlertsProvider";
 import SensorCard from "../components/SensorCard";
 import RealtimeChart from "../components/RealtimeChart";
 import AlertPanel from "../components/AlertPanel";
@@ -39,11 +41,28 @@ const HIDDEN_ZONE_AIR_TYPES = new Set(["co2"]);
 export default function OverviewPage() {
   const [sensorData, setSensorData] = useState({});
   const [prevData, setPrevData] = useState({});
-  const [alerts, setAlerts] = useState([]);
+  const [backendAlerts, setBackendAlerts] = useState([]);
   const [status, setStatus] = useState(null);
   const [weather, setWeather] = useState(null);
   const { data: rtdbData } = useRTDBData();
   const { activeSensorCount } = useControlStates();
+  const {
+    alerts: anomalyAlerts,
+    topAlert,
+    attentionNeeded,
+    criticalCount,
+    warningCount,
+  } = useAlerts();
+
+  const mergedAlerts = useMemo(() => {
+    // Anomaly alerts first (they're the live, deterministic ones),
+    // then backend alerts that don't duplicate a sensor_id already flagged.
+    const covered = new Set(anomalyAlerts.map((a) => a.sensor_id));
+    const backendExtras = (backendAlerts || []).filter(
+      (a) => !a.sensor_id || !covered.has(a.sensor_id)
+    );
+    return [...anomalyAlerts, ...backendExtras];
+  }, [anomalyAlerts, backendAlerts]);
 
   // Chart history — directly from RTDB (works without backend simulator)
   const { data: airHistory } = useRTDBHistory("zone_air", "humidity", 30);
@@ -57,7 +76,7 @@ export default function OverviewPage() {
         api.getAlerts(),
         api.getStatus(),
       ]);
-      setAlerts(alertsData);
+      setBackendAlerts(alertsData || []);
       setStatus(statusData);
     } catch (err) {
       console.error("Failed to fetch overview meta:", err);
@@ -196,15 +215,24 @@ export default function OverviewPage() {
         <GlowCard
           icon={AlertTriangle}
           label="Active Alerts"
-          value={alerts.length}
+          value={mergedAlerts.length}
           unit=""
-          gradient={alerts.length > 0 ? "from-yellow-500/20 to-orange-500/10" : "from-gray-500/10 to-gray-600/5"}
-          iconColor={alerts.length > 0 ? "text-yellow-400" : "text-gray-500"}
-          valueColor={alerts.length > 0 ? "text-yellow-300" : "text-gray-400"}
-          borderColor={alerts.length > 0 ? "border-yellow-500/20" : "border-gray-700/30"}
+          gradient={mergedAlerts.length > 0 ? "from-yellow-500/20 to-orange-500/10" : "from-gray-500/10 to-gray-600/5"}
+          iconColor={mergedAlerts.length > 0 ? "text-yellow-400" : "text-gray-500"}
+          valueColor={mergedAlerts.length > 0 ? "text-yellow-300" : "text-gray-400"}
+          borderColor={mergedAlerts.length > 0 ? "border-yellow-500/20" : "border-gray-700/30"}
           isInteger
         />
       </div>
+
+      {/* Attention banner with AI suggestion */}
+      {attentionNeeded && topAlert && (
+        <AttentionBanner
+          alert={topAlert}
+          criticalCount={criticalCount}
+          warningCount={warningCount}
+        />
+      )}
 
       {/* Weather Widget */}
       {weather && !weather.error && (
@@ -221,7 +249,7 @@ export default function OverviewPage() {
             data={airHistory}
             sensorType="humidity"
             height={250}
-            title="Air Humidity (Last 30 min)"
+            title="Average Air Humidity"
           />
         </div>
         <div className="space-y-4">
@@ -233,10 +261,15 @@ export default function OverviewPage() {
             <AiInsightPanel maxItems={4} compact />
           </div>
           <div>
-            <h3 className="text-sm font-medium text-gray-400 mb-3">
+            <h3 className="text-sm font-medium text-gray-400 mb-3 flex items-center gap-2">
               Recent Alerts
+              {mergedAlerts.length > 0 && (
+                <span className="text-[10px] px-2 py-0.5 rounded-full bg-red-500/15 border border-red-500/30 text-red-300">
+                  {mergedAlerts.length} active
+                </span>
+              )}
             </h3>
-            <AlertPanel alerts={alerts} onRefresh={fetchMeta} />
+            <AlertPanel alerts={mergedAlerts} onRefresh={fetchMeta} />
           </div>
         </div>
       </div>
@@ -312,6 +345,100 @@ export default function OverviewPage() {
         height={250}
         title="Soil Moisture — Substrate A / B / C (Last 30 min)"
       />
+    </div>
+  );
+}
+
+function AttentionBanner({ alert, criticalCount, warningCount }) {
+  const isCritical = alert.severity === "critical";
+  const Icon = isCritical ? AlertCircle : AlertTriangle;
+  const palette = isCritical
+    ? {
+        ring: "ring-red-500/30",
+        bg: "from-red-500/15 via-rose-500/10 to-orange-500/5",
+        border: "border-red-500/30",
+        icon: "text-red-300",
+        title: "text-red-200",
+        glow: "bg-red-500/20",
+      }
+    : {
+        ring: "ring-yellow-500/25",
+        bg: "from-yellow-500/15 via-amber-500/10 to-orange-500/5",
+        border: "border-yellow-500/30",
+        icon: "text-yellow-300",
+        title: "text-yellow-200",
+        glow: "bg-yellow-500/20",
+      };
+
+  const unit = alert.unit || "";
+  const rangeTxt =
+    alert.expected_min != null && alert.expected_max != null
+      ? `Expected ${alert.expected_min}–${alert.expected_max}${unit ? ` ${unit}` : ""}`
+      : null;
+
+  return (
+    <div
+      className={`relative overflow-hidden rounded-2xl border ${palette.border} bg-gradient-to-br ${palette.bg} backdrop-blur-sm ring-1 ${palette.ring} p-4 animate-slide-up`}
+    >
+      <div className={`absolute -top-12 -right-12 w-40 h-40 rounded-full blur-3xl ${palette.glow}`} />
+      <div className="relative flex items-start gap-4">
+        <div className={`shrink-0 w-10 h-10 rounded-xl ${palette.glow} flex items-center justify-center`}>
+          <Icon size={20} className={palette.icon} />
+        </div>
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 flex-wrap">
+            <p className={`text-sm font-semibold ${palette.title}`}>
+              Attention needed — {alert.sensor_id}
+            </p>
+            <span className="text-[9px] uppercase tracking-wider font-bold px-2 py-0.5 rounded-full bg-black/40 text-white">
+              {alert.severity}
+            </span>
+            {alert.direction && (
+              <span className="text-[10px] px-2 py-0.5 rounded-full bg-white/5 border border-white/10 text-gray-200">
+                {alert.direction === "low" ? "Below range" : "Above range"}
+              </span>
+            )}
+          </div>
+          <p className="text-[13px] text-gray-200 mt-1">{alert.message}</p>
+
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mt-1.5 text-[11px] text-gray-400">
+            {alert.value != null && (
+              <span>
+                Current: <span className="text-white font-medium">{alert.value.toFixed(1)}{unit && ` ${unit}`}</span>
+              </span>
+            )}
+            {rangeTxt && <span>{rangeTxt}</span>}
+            {alert.zone_id && <span>Zone: {alert.zone_id}</span>}
+          </div>
+
+          {alert.suggestion && (
+            <div className="mt-3 flex items-start gap-2 p-3 rounded-xl bg-white/[0.06] border border-white/10">
+              <Sparkles size={14} className="text-amber-300 mt-0.5 shrink-0" />
+              <div>
+                <p className="text-[11px] uppercase tracking-wider font-semibold text-amber-200/80 mb-0.5">
+                  AI Suggestion
+                </p>
+                <p className="text-[13px] text-gray-200 leading-relaxed">
+                  {alert.suggestion}
+                </p>
+              </div>
+            </div>
+          )}
+
+          {(criticalCount + warningCount > 1) && (
+            <p className="mt-2 text-[11px] text-gray-400">
+              {criticalCount > 0 && (
+                <span className="text-red-300">{criticalCount} critical</span>
+              )}
+              {criticalCount > 0 && warningCount > 0 && <span> · </span>}
+              {warningCount > 0 && (
+                <span className="text-yellow-300">{warningCount} warning</span>
+              )}
+              <span> detected in total.</span>
+            </p>
+          )}
+        </div>
+      </div>
     </div>
   );
 }

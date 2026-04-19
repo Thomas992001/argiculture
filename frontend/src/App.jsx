@@ -12,6 +12,7 @@ import GreenhousePage from "./pages/GreenhousePage";
 import AssistantPage from "./pages/AssistantPage";
 import LoginPage from "./pages/LoginPage";
 import AiAssistant from "./components/AiAssistant";
+import { AlertsProvider } from "./contexts/AlertsProvider";
 
 export default function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -64,7 +65,17 @@ export default function App() {
           } 
         />
         
-        <Route element={isAuthenticated ? <Layout onLogout={handleLogout} /> : <Navigate to="/login" replace />}>
+        <Route
+          element={
+            isAuthenticated ? (
+              <AlertsProvider>
+                <Layout onLogout={handleLogout} />
+              </AlertsProvider>
+            ) : (
+              <Navigate to="/login" replace />
+            )
+          }
+        >
           <Route path="/" element={<OverviewPage />} />
           <Route path="/sensors" element={<SensorsPage />} />
           <Route path="/greenhouse" element={<GreenhousePage />} />

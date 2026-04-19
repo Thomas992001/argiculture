@@ -10,6 +10,12 @@ import {
   AreaChart,
   Legend,
 } from "recharts";
+import {
+  readingTimestampMs,
+  formatMytTime,
+  formatMytDateTime,
+  generateMytTicks,
+} from "../utils/analytics";
 
 const COLORS = {
   humidity: "#60a5fa",
@@ -21,6 +27,10 @@ const COLORS = {
   soil_moisture: "#22d3ee",
 };
 
+function tooltipLabelFormatter(ms) {
+  return formatMytDateTime(ms);
+}
+
 export default function RealtimeChart({
   data = [],
   series = null,
@@ -31,22 +41,23 @@ export default function RealtimeChart({
 }) {
   const color = COLORS[sensorType] || "#9ca3af";
 
+  // ─── Multi-series mode (e.g. Substrate A / B / C) ──────────────────────
   if (series && series.length > 0) {
-    const timeMap = {};
+    const byMs = new Map();
     for (const s of series) {
-      for (const point of s.data) {
-        const time = new Date(point.timestamp).toLocaleTimeString([], {
-          hour: "2-digit",
-          minute: "2-digit",
-          second: "2-digit",
-        });
-        if (!timeMap[time]) timeMap[time] = { time };
-        timeMap[time][s.label] = point.value;
+      for (const point of s.data || []) {
+        const ms = readingTimestampMs(point.timestamp);
+        if (!Number.isFinite(ms)) continue;
+        const row = byMs.get(ms) || { ms };
+        row[s.label] = typeof point.value === "number" ? point.value : Number(point.value);
+        byMs.set(ms, row);
       }
     }
-    const mergedData = Object.values(timeMap).sort((a, b) =>
-      a.time.localeCompare(b.time)
-    );
+    const mergedData = Array.from(byMs.values()).sort((a, b) => a.ms - b.ms);
+
+    const startMs = mergedData[0]?.ms;
+    const endMs = mergedData[mergedData.length - 1]?.ms;
+    const ticks = generateMytTicks(startMs, endMs, 5);
 
     return (
       <div className="bg-gray-900/50 rounded-xl border border-gray-800 p-4">
@@ -57,7 +68,12 @@ export default function RealtimeChart({
           <LineChart data={mergedData}>
             <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
             <XAxis
-              dataKey="time"
+              dataKey="ms"
+              type="number"
+              scale="time"
+              domain={["dataMin", "dataMax"]}
+              ticks={ticks.length > 0 ? ticks : undefined}
+              tickFormatter={formatMytTime}
               tick={{ fontSize: 10, fill: "#9ca3af" }}
               stroke="#4b5563"
             />
@@ -67,6 +83,7 @@ export default function RealtimeChart({
               domain={["auto", "auto"]}
             />
             <Tooltip
+              labelFormatter={tooltipLabelFormatter}
               contentStyle={{
                 backgroundColor: "#1f2937",
                 border: "1px solid #374151",
@@ -86,6 +103,7 @@ export default function RealtimeChart({
                 stroke={s.color}
                 strokeWidth={2}
                 dot={false}
+                connectNulls
                 isAnimationActive={false}
               />
             ))}
@@ -95,14 +113,21 @@ export default function RealtimeChart({
     );
   }
 
-  const chartData = data.map((point) => ({
-    time: new Date(point.timestamp).toLocaleTimeString([], {
-      hour: "2-digit",
-      minute: "2-digit",
-      second: "2-digit",
-    }),
-    value: point.value,
-  }));
+  // ─── Single-series mode ────────────────────────────────────────────────
+  const chartData = (data || [])
+    .map((point) => {
+      const ms = readingTimestampMs(point.timestamp);
+      const value =
+        typeof point.value === "number" ? point.value : Number(point.value);
+      if (!Number.isFinite(ms) || !Number.isFinite(value)) return null;
+      return { ms, value };
+    })
+    .filter(Boolean)
+    .sort((a, b) => a.ms - b.ms);
+
+  const startMs = chartData[0]?.ms;
+  const endMs = chartData[chartData.length - 1]?.ms;
+  const ticks = generateMytTicks(startMs, endMs, 5);
 
   return (
     <div className="bg-gray-900/50 rounded-xl border border-gray-800 p-4">
@@ -113,7 +138,12 @@ export default function RealtimeChart({
         <AreaChart data={chartData}>
           <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
           <XAxis
-            dataKey="time"
+            dataKey="ms"
+            type="number"
+            scale="time"
+            domain={["dataMin", "dataMax"]}
+            ticks={ticks.length > 0 ? ticks : undefined}
+            tickFormatter={formatMytTime}
             tick={{ fontSize: 10, fill: "#9ca3af" }}
             stroke="#4b5563"
           />
@@ -123,6 +153,7 @@ export default function RealtimeChart({
             domain={["auto", "auto"]}
           />
           <Tooltip
+            labelFormatter={tooltipLabelFormatter}
             contentStyle={{
               backgroundColor: "#1f2937",
               border: "1px solid #374151",
@@ -136,7 +167,7 @@ export default function RealtimeChart({
             dataKey="value"
             stroke={color}
             fill={color}
-            fillOpacity={0.1}
+            fillOpacity={showArea ? 0.1 : 0}
             strokeWidth={2}
             dot={false}
             isAnimationActive={false}
