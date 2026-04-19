@@ -59,14 +59,14 @@ int dryValue = 3200;
 int wetValue = 1400;
 
 unsigned long lastSend = 0;
-int lastMoistureA = -1;
-int lastMoistureB = -1;
-int lastMoistureC = -1;
-int lastAirHum = -1;
-int lastAirTemp = -1000;
-int lastTemp = -1000;
-int lastTempB = -1000;
-int lastTempC = -1000;
+float lastMoistureA = -1;
+float lastMoistureB = -1;
+float lastMoistureC = -1;
+float lastAirHum = -1;
+float lastAirTemp = -1000;
+float lastTemp = -1000;
+float lastTempB = -1000;
+float lastTempC = -1000;
 float lastPhA = -1;
 float lastLight = -1;
 
@@ -126,7 +126,7 @@ float readPH(int pin) {
 }
 
 // ================= SOIL =================
-int readSoil(int pin) {
+float readSoil(int pin) {
   long sum = 0;
   for (int i = 0; i < 20; i++) {
     sum += analogRead(pin);
@@ -135,25 +135,25 @@ int readSoil(int pin) {
   return sum / 20;
 }
 
-int toPercent(int value) {
-  int percent = map(value, dryValue, wetValue, 0, 100);
+float toPercent(float value) {
+  float percent = (value - dryValue) * 100.0 / (wetValue - dryValue);
   return constrain(percent, 0, 100);
 }
 
 // ================= TEMP (FIXED) =================
-void readAllTemp(int &tempA, int &tempB, int &tempC) {
+void readAllTemp(float &tempA, float &tempB, float &tempC) {
   sensors.requestTemperatures();
 
   float tA = sensors.getTempC(tempAAddr);
   float tB = sensors.getTempC(tempBAddr);
   float tC = sensors.getTempC(tempCAddr);
 
-  tempA = (tA == DEVICE_DISCONNECTED_C || tA < -50) ? -127 : (int)tA;
-  tempB = (tB == DEVICE_DISCONNECTED_C || tB < -50) ? -127 : (int)tB;
-  tempC = (tC == DEVICE_DISCONNECTED_C || tC < -50) ? -127 : (int)tC;
+  tempA = (tA == DEVICE_DISCONNECTED_C || tA < -50) ? -127.0 : tA;
+  tempB = (tB == DEVICE_DISCONNECTED_C || tB < -50) ? -127.0 : tB;
+  tempC = (tC == DEVICE_DISCONNECTED_C || tC < -50) ? -127.0 : tC;
 }
 
-void readDHT(int &humidity, int &temperature) {
+void readDHT(float &humidity, float &temperature) {
   float h = dht.readHumidity();
   float t = dht.readTemperature();
 
@@ -163,12 +163,16 @@ void readDHT(int &humidity, int &temperature) {
     return;
   }
 
-  humidity = (int)h;
-  temperature = (int)t;
+  humidity = (float)h;
+  temperature = (float)t;
+}
+
+float round1(float v) {
+  return round(v * 10) / 10.0;
 }
 
 // ================= FIREBASE SOIL A =================
-void sendSoilA(int moisture) {
+void sendSoilA(float moisture) {
   WiFiClientSecure client;
   client.setInsecure();
   HTTPClient http;
@@ -181,7 +185,7 @@ void sendSoilA(int moisture) {
   doc["sensor_type"] = "soil_moisture";
   doc["timestamp"] = now;
   doc["unit"] = "%";
-  doc["value"] = moisture;
+  doc["value"] = round1(moisture);
   doc["zone_id"] = zone_a;
 
   String jsonData;
@@ -203,7 +207,7 @@ void sendSoilA(int moisture) {
 }
 
 // ================= FIREBASE SOIL B =================
-void sendSoilB(int moisture) {
+void sendSoilB(float moisture) {
   WiFiClientSecure client;
   client.setInsecure();
   HTTPClient http;
@@ -216,7 +220,7 @@ void sendSoilB(int moisture) {
   doc["sensor_type"] = "soil_moisture";
   doc["timestamp"] = now;
   doc["unit"] = "%";
-  doc["value"] = moisture;
+  doc["value"] = round1(moisture);
   doc["zone_id"] = zone_b;
 
   String jsonData;
@@ -238,7 +242,7 @@ void sendSoilB(int moisture) {
 }
 
 // ================= FIREBASE SOIL C =================
-void sendSoilC(int moisture) {
+void sendSoilC(float moisture) {
   WiFiClientSecure client;
   client.setInsecure();
   HTTPClient http;
@@ -251,7 +255,7 @@ void sendSoilC(int moisture) {
   doc["sensor_type"] = "soil_moisture";
   doc["timestamp"] = now;
   doc["unit"] = "%";
-  doc["value"] = moisture;
+  doc["value"] = round1(moisture);
   doc["zone_id"] = zone_c;
 
   String jsonData;
@@ -274,7 +278,7 @@ void sendSoilC(int moisture) {
 
 
 // ================= FIREBASE Air Humidity =================
-void sendAirHumidity(int humidity) {
+void sendAirHumidity(float humidity) {
   WiFiClientSecure client;
   client.setInsecure();
   HTTPClient http;
@@ -287,7 +291,7 @@ void sendAirHumidity(int humidity) {
   doc["sensor_type"] = "humidity";
   doc["timestamp"] = now;
   doc["unit"] = "%";
-  doc["value"] = humidity;
+  doc["value"] = round1(humidity);
   doc["zone_id"] = zone_air;
 
   String jsonData;
@@ -309,7 +313,7 @@ void sendAirHumidity(int humidity) {
 }
 
 // ================= FIREBASE Air Temperature =================
-void sendAirTemp(int temperature) {
+void sendAirTemp(float temperature) {
   WiFiClientSecure client;
   client.setInsecure();
   HTTPClient http;
@@ -322,7 +326,7 @@ void sendAirTemp(int temperature) {
   doc["sensor_type"] = "temperature";
   doc["timestamp"] = now;
   doc["unit"] = "C";
-  doc["value"] = temperature;
+  doc["value"] = round1(temperature);
   doc["zone_id"] = zone_air;
 
   String jsonData;
@@ -344,7 +348,7 @@ void sendAirTemp(int temperature) {
 }
 
 // ================= FIREBASE TEMP A=================
-void sendTemp(int temp) {
+void sendTemp(float temp) {
   WiFiClientSecure client;
   client.setInsecure();
   HTTPClient http;
@@ -357,7 +361,7 @@ void sendTemp(int temp) {
   doc["sensor_type"] = "soil_temperature";
   doc["timestamp"] = now;
   doc["unit"] = "C";
-  doc["value"] = temp;
+  doc["value"] = round1(temp);
   doc["zone_id"] = zone_a;
 
   String jsonData;
@@ -379,7 +383,7 @@ void sendTemp(int temp) {
 }
 
 // ================= FIREBASE TEMP B=================
-void sendTempB(int tempB) {
+void sendTempB(float tempB) {
   WiFiClientSecure client;
   client.setInsecure();
   HTTPClient http;
@@ -392,7 +396,7 @@ void sendTempB(int tempB) {
   doc["sensor_type"] = "soil_temperature";
   doc["timestamp"] = now;
   doc["unit"] = "C";
-  doc["value"] = tempB;
+  doc["value"] = round1(tempB);
   doc["zone_id"] = zone_b;
 
   String jsonData;
@@ -415,7 +419,7 @@ void sendTempB(int tempB) {
 
 
 // ================= FIREBASE TEMP C=================
-void sendTempC(int tempC) {
+void sendTempC(float tempC) {
   WiFiClientSecure client;
   client.setInsecure();
   HTTPClient http;
@@ -428,7 +432,7 @@ void sendTempC(int tempC) {
   doc["sensor_type"] = "soil_temperature";
   doc["timestamp"] = now;
   doc["unit"] = "C";
-  doc["value"] = tempC;
+  doc["value"] = round1(tempC);
   doc["zone_id"] = zone_c;
 
   String jsonData;
@@ -463,7 +467,7 @@ void sendPHA(float ph) {
   doc["sensor_type"] = "soil_ph";
   doc["timestamp"] = now;
   doc["unit"] = "pH";
-  doc["value"] = ph;
+  doc["value"] = round1(ph);
   doc["zone_id"] = zone_a;
 
   String jsonData;
@@ -499,7 +503,7 @@ void sendLight(float lux) {
   doc["sensor_type"] = "light_intensity";
   doc["timestamp"] = now;
   doc["unit"] = "lux";
-  doc["value"] = lux;
+  doc["value"] = round1(lux);
   doc["zone_id"] = zone_air;
 
   String jsonData;
@@ -567,11 +571,11 @@ void setup() {
 // ================= LOOP =================
 void loop() {
 
-  int moistureA = toPercent(readSoil(SOIL_A_PIN));
-  int moistureB = toPercent(readSoil(SOIL_B_PIN));
-  int moistureC = toPercent(readSoil(SOIL_C_PIN));
-  int airHum, airTemp;
-  int tempA, tempB, tempC;
+  float moistureA = toPercent(readSoil(SOIL_A_PIN));
+  float moistureB = toPercent(readSoil(SOIL_B_PIN));
+  float moistureC = toPercent(readSoil(SOIL_C_PIN));
+  float airHum, airTemp;
+  float tempA, tempB, tempC;
   readAllTemp(tempA, tempB, tempC);
   readDHT(airHum, airTemp);
   float phA = readPH(PH_A_PIN);
@@ -590,15 +594,23 @@ void loop() {
   Serial.print(" | Light: "); Serial.print(lightLux); Serial.print(" lux");
   Serial.println("C");
 
+  // ===== PUMP CONTROL =====
+  if (moistureA < 40 && !pumpAState) {
+    Serial.print("Water pump A activated, moisture: ");
+    Serial.println(moistureA);
+    delay(300);
+    Serial.println("Water pump A deactivated");
+  }
+
   u8g2.clearBuffer();
   u8g2.setFont(u8g2_font_ncenB08_tr);
 
-  char line1[20];
-  sprintf(line1, "A:%d B:%d C:%d", moistureA, moistureB, moistureC);
+  char line1[40];
+  sprintf(line1, "A:%.1f B:%.1f C:%.1f", moistureA, moistureB, moistureC);
   u8g2.drawStr(0, 25, line1);
 
   char line2[20];
-  sprintf(line2, "Temp:%dC", tempA);
+  sprintf(line2, "Temp:%.1fC", tempA);
   u8g2.drawStr(0, 50, line2);
 
   char line3[20];
@@ -606,6 +618,8 @@ void loop() {
   u8g2.drawStr(0, 63, line3);
 
   u8g2.sendBuffer();
+
+
 
   if (millis() - lastSend >= 5000) {
     lastSend = millis();
