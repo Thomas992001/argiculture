@@ -1,10 +1,11 @@
 from pydantic_settings import BaseSettings
+from pydantic import Field
 from typing import Optional
 
 
 class Settings(BaseSettings):
     backend_host: str = "0.0.0.0"
-    backend_port: int = 8000
+    backend_port: int = Field(8000, alias="PORT")
 
     mqtt_broker_host: str = "localhost"
     mqtt_broker_port: int = 1883
@@ -29,9 +30,11 @@ class Settings(BaseSettings):
     # Firebase
     firebase_target_uid: str = "ZLwjf4x1vBPkcEHc015OhelwwHo1"
 
-    class Config:
-        env_file = ".env"
-        env_file_encoding = "utf-8"
+    model_config = {
+        "env_file": ".env",
+        "env_file_encoding": "utf-8",
+        "extra": "ignore"
+    }
 
 
 settings = Settings()
