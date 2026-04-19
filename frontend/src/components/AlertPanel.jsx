@@ -8,8 +8,10 @@ import {
   BarChart3,
   ChevronDown,
   ChevronRight,
+  Sparkles,
 } from "lucide-react";
 import { api } from "../api/client";
+import { formatMytDateTime } from "../utils/analytics";
 
 const SEVERITY_STYLES = {
   critical: {
@@ -90,6 +92,10 @@ function AlertItem({ alert, onAcknowledge }) {
     navigate(`/sensors?zone=${zone}&sensor=${sensorType}`);
   };
 
+  const isAnomaly = alert.source === "anomaly";
+  const unit = alert.unit || "";
+  const hasRange = alert.expected_min != null && alert.expected_max != null;
+
   return (
     <div
       className={`p-3 rounded-lg border ${style.bg} ${style.border} animate-slide-up cursor-pointer transition-all hover:brightness-110`}
@@ -98,10 +104,22 @@ function AlertItem({ alert, onAcknowledge }) {
       <div className="flex items-start gap-3">
         <Icon size={16} className={`${style.text} mt-0.5 shrink-0`} />
         <div className="flex-1 min-w-0">
-          <p className={`text-sm ${style.text}`}>{alert.message}</p>
+          <div className="flex items-center gap-2 flex-wrap">
+            <p className={`text-sm ${style.text} font-medium`}>
+              {alert.sensor_id || alert.message}
+            </p>
+            {alert.direction && (
+              <span className={`text-[9px] px-1.5 py-0.5 rounded-full font-semibold uppercase tracking-wider ${style.badge} text-white`}>
+                {alert.direction === "low" ? "Low" : alert.direction === "high" ? "High" : alert.severity}
+              </span>
+            )}
+          </div>
+          {alert.sensor_id && alert.message && (
+            <p className="text-[11px] text-gray-400 mt-0.5">{alert.message}</p>
+          )}
           {!expanded && (
             <p className="text-[10px] text-gray-500 mt-1">
-              {new Date(alert.timestamp).toLocaleTimeString()}
+              {formatMytDateTime(alert.timestamp)}
               {alert.zone_id && ` · ${alert.zone_id}`}
             </p>
           )}
@@ -115,13 +133,35 @@ function AlertItem({ alert, onAcknowledge }) {
         </div>
       </div>
 
+      {alert.suggestion && (
+        <div className="mt-2 ml-7 flex items-start gap-2 p-2 rounded-md bg-white/[0.04] border border-white/5">
+          <Sparkles size={11} className="text-amber-300 mt-0.5 shrink-0" />
+          <p className="text-[11px] text-gray-300 leading-relaxed">
+            {alert.suggestion}
+          </p>
+        </div>
+      )}
+
       {expanded && (
         <div className="mt-2.5 ml-7 animate-slide-up">
           <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[10px] text-gray-500 mb-2">
-            <span>{new Date(alert.timestamp).toLocaleTimeString()}</span>
+            <span>{formatMytDateTime(alert.timestamp)}</span>
             {alert.zone_id && <span>Zone: {alert.zone_id}</span>}
-            {alert.value != null && <span>Value: {alert.value.toFixed(1)}</span>}
-            {alert.threshold != null && <span>Threshold: {alert.threshold}</span>}
+            {alert.value != null && (
+              <span>
+                Value: {alert.value.toFixed(1)}
+                {unit && ` ${unit}`}
+              </span>
+            )}
+            {hasRange && (
+              <span>
+                Expected: {alert.expected_min}–{alert.expected_max}
+                {unit && ` ${unit}`}
+              </span>
+            )}
+            {alert.anomaly_score != null && (
+              <span>z: {alert.anomaly_score.toFixed(2)}</span>
+            )}
           </div>
           <div className="flex items-center gap-2">
             <button
@@ -131,16 +171,18 @@ function AlertItem({ alert, onAcknowledge }) {
               <BarChart3 size={12} />
               View Data
             </button>
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                onAcknowledge(alert.alert_id);
-              }}
-              className="inline-flex items-center gap-1.5 text-[11px] font-medium px-2.5 py-1 rounded-md bg-gray-800/80 border border-gray-700/50 text-gray-400 hover:text-gray-200 hover:bg-gray-700/80 transition-colors"
-            >
-              <Check size={12} />
-              Acknowledge
-            </button>
+            {!isAnomaly && (
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onAcknowledge(alert.alert_id);
+                }}
+                className="inline-flex items-center gap-1.5 text-[11px] font-medium px-2.5 py-1 rounded-md bg-gray-800/80 border border-gray-700/50 text-gray-400 hover:text-gray-200 hover:bg-gray-700/80 transition-colors"
+              >
+                <Check size={12} />
+                Acknowledge
+              </button>
+            )}
           </div>
         </div>
       )}
