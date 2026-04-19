@@ -98,4 +98,18 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ uid }),
     }),
+
+  // Agentic AI
+  agentChat: (message, sessionId = "default", language = null) =>
+    fetchJSON("/advisor/agent-chat", {
+      method: "POST",
+      body: JSON.stringify({ message, session_id: sessionId, language }),
+    }),
+  helloTwin: () => fetchJSON("/advisor/hello-twin"),
+  confirmAction: (actionId) =>
+    fetchJSON("/advisor/confirm-action", {
+      method: "POST",
+      body: JSON.stringify({ action_id: actionId }),
+    }),
+  getAgentLog: (limit = 50) => fetchJSON(`/advisor/agent-log?limit=${limit}`),
 };
