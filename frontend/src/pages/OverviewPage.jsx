@@ -156,7 +156,7 @@ export default function OverviewPage() {
           <div className="flex items-center gap-4 text-xs text-gray-400">
             <div className="flex items-center gap-1.5">
               <Server size={14} />
-              <span>Sensors: {status.active_sensors}</span>
+              <span>Sensors: {13}</span>
             </div>
             <div className="flex items-center gap-1.5">
               <Activity size={14} className="text-greenhouse-400" />
