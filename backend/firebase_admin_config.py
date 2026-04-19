@@ -13,7 +13,18 @@ DATABASE_URL = "https://agritwin-mrv-default-rtdb.firebaseio.com/"
 def initialize_firebase():
     """Initializes the Firebase Admin SDK."""
     if not firebase_admin._apps:
-        cred = credentials.Certificate(SERVICE_ACCOUNT_PATH)
+        # Priority 1: Environment variable (JSON string)
+        cred_json = os.environ.get("FIREBASE_CREDENTIALS")
+        if cred_json:
+            import json
+            cred_dict = json.loads(cred_json)
+            cred = credentials.Certificate(cred_dict)
+        # Priority 2: Local JSON file
+        elif os.path.exists(SERVICE_ACCOUNT_PATH):
+            cred = credentials.Certificate(SERVICE_ACCOUNT_PATH)
+        else:
+            raise FileNotFoundError("Firebase service account credentials not found in environment or file.")
+
         firebase_admin.initialize_app(cred, {
             'databaseURL': DATABASE_URL
         })

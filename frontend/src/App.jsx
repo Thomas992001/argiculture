@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { Routes, Route, Navigate } from "react-router-dom";
 import { onAuthStateChanged, signOut } from "firebase/auth";
-import { auth } from "../../backend/firebaseConfig";
+import { auth } from "./firebase";
 import { api } from "./api/client";
 import Layout from "./components/Layout";
 import OverviewPage from "./pages/OverviewPage";
