@@ -13,18 +13,19 @@ import {
   Mic,
   MicOff,
   Globe,
+  Hand,
+  CheckCircle,
+  XCircle,
+  Activity,
 } from "lucide-react";
 import { api } from "../api/client";
 
 // ── Language-aware UI + voice recognition ──
-// Each entry provides: label, BCP-47 locale for Web Speech API,
-// localized quick questions, and localized UI strings. The backend
-// tags the chat payload with `language` so Gemini replies in-kind.
 const LANGUAGES = {
   en: {
     label: "English",
     locale: "en-US",
-    placeholder: "Ask anything...",
+    placeholder: "Ask anything or give a command...",
     title: "Ask me anything about your greenhouse",
     thinking: "Thinking...",
     listening: "Listening...",
@@ -41,7 +42,7 @@ const LANGUAGES = {
   zh: {
     label: "中文",
     locale: "zh-CN",
-    placeholder: "问点什么...",
+    placeholder: "问点什么，或下达指令...",
     title: "关于温室，你想了解什么？",
     thinking: "思考中...",
     listening: "正在聆听...",
@@ -74,6 +75,12 @@ const LANGUAGES = {
   },
 };
 
+// Hello Twin trigger phrases
+const HELLO_TWIN_TRIGGERS = [
+  "hello twin", "hi twin", "hey twin", "halo twin",
+  "你好孪生", "你好双胞", "嗨孪生",
+];
+
 function MarkdownLite({ text }) {
   if (!text) return null;
   const lines = text.split("\n");
@@ -102,6 +109,69 @@ function MarkdownLite({ text }) {
   );
 }
 
+// ── Action Cards ──
+function ActionsTakenCard({ actions }) {
+  if (!actions || actions.length === 0) return null;
+  return (
+    <div className="mt-2 space-y-1.5">
+      {actions.map((a, i) => (
+        <div key={i} className={`flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-xs border ${
+          a.success
+            ? "bg-green-500/10 border-green-500/30 text-green-400"
+            : "bg-red-500/10 border-red-500/30 text-red-400"
+        }`}>
+          {a.success ? <CheckCircle size={12} /> : <XCircle size={12} />}
+          <span className="font-medium">{a.actuator_name || a.actuator_id}</span>
+          <span className="text-gray-400">→</span>
+          <span className="uppercase font-mono">{a.command}</span>
+          {a.duration_seconds && (
+            <span className="text-gray-500 ml-auto">{a.duration_seconds}s</span>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function ActionsProposedCard({ actions, actionId, onConfirm, onReject, confirming }) {
+  if (!actions || actions.length === 0) return null;
+  return (
+    <div className="mt-2 space-y-2">
+      <div className="space-y-1.5">
+        {actions.map((a, i) => (
+          <div key={i} className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-xs bg-amber-500/10 border border-amber-500/30 text-amber-400">
+            <Activity size={12} />
+            <span className="font-medium">{a.actuator_name || a.actuator_id}</span>
+            <span className="text-gray-400">→</span>
+            <span className="uppercase font-mono">{a.command}</span>
+            {a.duration_seconds && (
+              <span className="text-gray-500 ml-auto">{a.duration_seconds}s</span>
+            )}
+          </div>
+        ))}
+      </div>
+      <div className="flex gap-2">
+        <button
+          onClick={() => onConfirm(actionId)}
+          disabled={confirming}
+          className="flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg bg-green-600 hover:bg-green-500 disabled:bg-gray-700 text-white text-xs font-medium transition-colors"
+        >
+          {confirming ? <Loader2 size={12} className="animate-spin" /> : <CheckCircle size={12} />}
+          Confirm
+        </button>
+        <button
+          onClick={() => onReject(actionId)}
+          disabled={confirming}
+          className="flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg bg-gray-700 hover:bg-gray-600 disabled:bg-gray-800 text-gray-300 text-xs font-medium transition-colors"
+        >
+          <XCircle size={12} />
+          Reject
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export default function AiAssistant() {
   const [isOpen, setIsOpen] = useState(false);
   const [messages, setMessages] = useState([]);
@@ -110,6 +180,7 @@ export default function AiAssistant() {
   const [language, setLanguage] = useState("en");
   const [listening, setListening] = useState(false);
   const [showLangMenu, setShowLangMenu] = useState(false);
+  const [confirming, setConfirming] = useState(false);
   const scrollRef = useRef(null);
   const inputRef = useRef(null);
   const recognitionRef = useRef(null);
@@ -124,7 +195,7 @@ export default function AiAssistant() {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
   }, [messages]);
 
-  // Set up Web Speech API recognition once. Reconfigured when language changes.
+  // Set up Web Speech API recognition. Reconfigured when language changes.
   useEffect(() => {
     const SpeechRecognition =
       window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -139,8 +210,14 @@ export default function AiAssistant() {
     recog.onresult = (event) => {
       const transcript = event.results[0]?.[0]?.transcript?.trim();
       if (transcript) {
-        setInput("");
-        sendMessage(transcript);
+        // Check for Hello Twin trigger in voice input
+        const lower = transcript.toLowerCase();
+        if (HELLO_TWIN_TRIGGERS.some((trigger) => lower.includes(trigger))) {
+          triggerHelloTwin();
+        } else {
+          setInput("");
+          sendMessage(transcript);
+        }
       }
     };
     recog.onerror = () => setListening(false);
@@ -173,14 +250,24 @@ export default function AiAssistant() {
     }
   };
 
-  const sendMessage = async (text) => {
-    setMessages((prev) => [...prev, { id: Date.now(), text, isUser: true }]);
+  // ── Hello Twin trigger ──
+  const triggerHelloTwin = async () => {
+    setMessages((prev) => [...prev, {
+      id: Date.now(), text: "👋 Hello Twin", isUser: true,
+    }]);
     setLoading(true);
     try {
-      const response = await api.chatWithAdvisor(text, "default", language);
+      const response = await api.helloTwin();
       setMessages((prev) => [...prev, {
-        id: Date.now() + 1, text: response.answer, isUser: false,
-        powered_by: response.powered_by, model: response.model,
+        id: Date.now() + 1,
+        text: response.answer,
+        isUser: false,
+        powered_by: response.powered_by,
+        model: response.model,
+        intent: response.intent,
+        actions_taken: response.actions_taken,
+        actions_proposed: response.actions_proposed,
+        action_id: response.action_id,
       }]);
       speakResponse(response.answer);
     } catch {
@@ -192,12 +279,92 @@ export default function AiAssistant() {
     }
   };
 
+  // ── Send message via Agent Chat ──
+  const sendMessage = async (text) => {
+    // Check for Hello Twin in text input
+    const lower = text.toLowerCase().trim();
+    if (HELLO_TWIN_TRIGGERS.some((trigger) => lower.includes(trigger))) {
+      return triggerHelloTwin();
+    }
+
+    setMessages((prev) => [...prev, { id: Date.now(), text, isUser: true }]);
+    setLoading(true);
+    try {
+      const response = await api.agentChat(text, "default", language);
+      setMessages((prev) => [...prev, {
+        id: Date.now() + 1,
+        text: response.answer,
+        isUser: false,
+        powered_by: response.powered_by,
+        model: response.model,
+        intent: response.intent,
+        actions_taken: response.actions_taken,
+        actions_proposed: response.actions_proposed,
+        action_id: response.action_id,
+      }]);
+      speakResponse(response.answer);
+    } catch {
+      setMessages((prev) => [...prev, {
+        id: Date.now() + 1, text: t.error, isUser: false,
+      }]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // ── Confirm/Reject proposed actions ──
+  const handleConfirm = async (actionId) => {
+    setConfirming(true);
+    try {
+      const response = await api.confirmAction(actionId);
+      setMessages((prev) => {
+        // Remove the confirm/reject buttons from the proposing message
+        const updated = prev.map((msg) => {
+          if (msg.action_id === actionId) {
+            return { ...msg, actions_proposed: [], action_id: null };
+          }
+          return msg;
+        });
+        return [...updated, {
+          id: Date.now(),
+          text: response.answer,
+          isUser: false,
+          powered_by: response.powered_by,
+          intent: response.intent,
+          actions_taken: response.actions_taken,
+          actions_proposed: [],
+        }];
+      });
+    } catch {
+      setMessages((prev) => [...prev, {
+        id: Date.now(), text: "Failed to confirm action. Please try again.", isUser: false,
+      }]);
+    } finally {
+      setConfirming(false);
+    }
+  };
+
+  const handleReject = (actionId) => {
+    setMessages((prev) => {
+      const updated = prev.map((msg) => {
+        if (msg.action_id === actionId) {
+          return { ...msg, actions_proposed: [], action_id: null };
+        }
+        return msg;
+      });
+      return [...updated, {
+        id: Date.now(),
+        text: "❌ Action cancelled by user.",
+        isUser: false,
+        intent: "cancelled",
+      }];
+    });
+  };
+
   const speakResponse = (text) => {
-    // Read back in the same language so voice-mode farmers can hear the answer
     if (!("speechSynthesis" in window) || !text) return;
     try {
       window.speechSynthesis.cancel();
-      // Strip markdown noise for a cleaner read-back
       const clean = text
         .replace(/[#*`_>~]/g, "")
         .replace(/\n{2,}/g, ". ")
@@ -246,7 +413,7 @@ export default function AiAssistant() {
               <div>
                 <h3 className="text-sm font-semibold text-white">GreenMind AI</h3>
                 <p className="text-[10px] text-greenhouse-400 flex items-center gap-1">
-                  <Zap size={8} /> Powered by Google Gemini
+                  <Zap size={8} /> Agent Mode • Powered by Gemini
                 </p>
               </div>
             </div>
@@ -299,6 +466,17 @@ export default function AiAssistant() {
               <div className="text-center py-6">
                 <Sparkles size={24} className="mx-auto text-greenhouse-400 mb-2" />
                 <p className="text-sm text-gray-400 mb-4">{t.title}</p>
+
+                {/* Hello Twin Button */}
+                <button
+                  onClick={triggerHelloTwin}
+                  disabled={loading}
+                  className="mx-auto mb-4 flex items-center gap-2 px-4 py-2.5 rounded-xl bg-gradient-to-r from-amber-500/20 to-orange-500/20 border border-amber-500/40 text-amber-400 hover:from-amber-500/30 hover:to-orange-500/30 hover:border-amber-500/60 transition-all text-sm font-medium shadow-lg shadow-amber-500/10"
+                >
+                  <Hand size={16} />
+                  👋 Hello Twin
+                </button>
+
                 <div className="flex flex-wrap gap-1.5 justify-center">
                   {t.quick.map((q) => (
                     <button key={q.label} onClick={() => sendMessage(q.label)}
@@ -323,13 +501,26 @@ export default function AiAssistant() {
                   {msg.isUser ? (
                     <p className="text-sm text-blue-200">{msg.text}</p>
                   ) : (
-                    <MarkdownLite text={msg.text} />
+                    <>
+                      <MarkdownLite text={msg.text} />
+                      <ActionsTakenCard actions={msg.actions_taken} />
+                      {msg.actions_proposed && msg.actions_proposed.length > 0 && msg.action_id && (
+                        <ActionsProposedCard
+                          actions={msg.actions_proposed}
+                          actionId={msg.action_id}
+                          onConfirm={handleConfirm}
+                          onReject={handleReject}
+                          confirming={confirming}
+                        />
+                      )}
+                    </>
                   )}
                   {msg.powered_by && (
                     <div className="mt-1.5 flex items-center gap-1">
                       <Zap size={8} className={msg.powered_by === "google_gemini" ? "text-greenhouse-500" : "text-gray-600"} />
                       <span className="text-[8px] text-gray-600">
                         {msg.powered_by === "google_gemini" ? "Gemini" : "Local AI"}
+                        {msg.intent && msg.intent !== "general_chat" && ` • ${msg.intent}`}
                       </span>
                     </div>
                   )}
