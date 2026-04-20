@@ -118,6 +118,16 @@ async def lifespan(app: FastAPI):
     if settings.simulator_enabled:
         simulator.start(interval=settings.simulator_interval_seconds)
 
+    # 🚀 Auto-bind to Firebase RTDB on startup
+    # Ensures AI advisor has data immediately without waiting for frontend /api/simulator/bind
+    if settings.firebase_target_uid:
+        uid = settings.firebase_target_uid
+        tsdb.set_active_uid(uid)
+        tsdb.start_rtdb_listener(uid)
+        twin_state.pull_actuators_from_cloud(uid)
+        twin_state.start_control_listener(uid)
+        print(f"[Startup] Auto-bound to Firebase UID: {uid} from configuration")
+
     yield
 
     simulator.stop()

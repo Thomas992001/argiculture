@@ -172,7 +172,7 @@ function ActionsProposedCard({ actions, actionId, onConfirm, onReject, confirmin
   );
 }
 
-export default function AiAssistant() {
+export default function AiAssistant({ onOpenHeyTwin }) {
   const [isOpen, setIsOpen] = useState(false);
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState("");
@@ -392,9 +392,11 @@ export default function AiAssistant() {
 
   return (
     <>
-      {/* Floating button */}
+      {/* Floating button — click to open chat, double-click for Hey Twin */}
       {!isOpen && (
         <button onClick={() => setIsOpen(true)}
+          onDoubleClick={(e) => { e.preventDefault(); onOpenHeyTwin?.(); }}
+          title="Click: Chat | Double-click: Hey Twin | Ctrl+K"
           className="fixed bottom-6 right-6 z-50 w-14 h-14 rounded-full bg-gradient-to-br from-greenhouse-600 to-greenhouse-700 hover:from-greenhouse-500 hover:to-greenhouse-600 text-white shadow-lg shadow-greenhouse-600/30 flex items-center justify-center transition-all hover:scale-110">
           <Sparkles size={24} />
           <span className="absolute -top-1 -right-1 w-3 h-3 bg-greenhouse-400 rounded-full animate-pulse-green" />

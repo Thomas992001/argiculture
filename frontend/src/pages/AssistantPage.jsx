@@ -428,7 +428,7 @@ export default function AssistantPage() {
 
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
         {/* Chat — main area */}
-        <div className="lg:col-span-3 flex flex-col bg-gray-900/50 rounded-xl border border-gray-800 overflow-hidden" style={{ minHeight: "560px" }}>
+        <div className="lg:col-span-3 flex flex-col bg-gray-900/50 backdrop-blur-sm rounded-xl border border-gray-800 overflow-hidden" style={{ height: "700px" }}>
           {/* Messages */}
           <div ref={scrollRef} className="flex-1 overflow-y-auto p-5 space-y-4">
             {messages.length === 0 && (

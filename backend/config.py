@@ -24,8 +24,8 @@ class Settings(BaseSettings):
     ml_anomaly_sensitivity: float = 0.05
 
     # Google Gemini AI
-    gemini_api_key: str = "AIzaSyCYnZa1KMC0Rm3UQEbYSOC49MniptijI8M"
-    gemini_model: str = "gemini-2.5-flash"
+    gemini_api_key: str = "AIzaSyBhrKSH4hrSmE7pllKJxUZgL73rcpMl5Sk"
+    gemini_model: str = "gemini-3-flash-preview"
 
     # Firebase
     firebase_target_uid: str = "ZLwjf4x1vBPkcEHc015OhelwwHo1"

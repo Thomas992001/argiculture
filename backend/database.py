@@ -35,7 +35,12 @@ class TimeSeriesStore:
         print(f"DEBUG: Firebase Sync activated for UID: {uid}")
 
     def start_rtdb_listener(self, uid: str):
-        """Listen to real-time updates FROM the cloud to sync back to local."""
+        """Listen to real-time updates FROM the cloud to sync back to local.
+        
+        This is critical for the AI advisor: when hardware (ESP32) pushes data
+        directly to RTDB without going through the simulator, this listener
+        ensures the in-memory store stays current so Gemini gets real context.
+        """
         if not root_ref:
             return
 
@@ -46,20 +51,94 @@ class TimeSeriesStore:
             except:
                 pass
 
+        def _ingest_reading(key: str, val: dict):
+            """Parse a single RTDB entry into a SensorReading and store it."""
+            if not isinstance(val, dict):
+                return
+            # Must have the essential fields
+            if "zone_id" not in val or "sensor_type" not in val:
+                return
+            try:
+                reading = SensorReading(**val)
+                rkey = f"{reading.zone_id}:{reading.sensor_id}"
+                self._series[rkey].append(reading)
+                self._latest[rkey] = reading
+            except Exception as e:
+                print(f"[RTDB Listener] Failed to parse reading '{key}': {e}")
+
         def on_data_change(event):
-            if event.data:
-                # event.data should be a dict of sensor values
-                # Path: users/{uid}/live/latest
-                with self._lock:
+            if not event.data:
+                return
+
+            with self._lock:
+                if event.path == "/" and isinstance(event.data, dict):
+                    # Initial load or full snapshot — event.data is the entire
+                    # latest dict: {"zone_air:humidity": {...}, ...}
                     for key, val in event.data.items():
-                        # Key here might be composite or direct
-                        # We just update _latest for analytics/advisor to be aware
-                        pass
-                print(f"DEBUG: Cloud Telemetry Event Received: {event.path}")
+                        if isinstance(val, dict):
+                            _ingest_reading(key, val)
+                elif isinstance(event.data, dict):
+                    # Partial update on a specific key, e.g. path="/zone_air:humidity"
+                    key = event.path.lstrip("/")
+                    _ingest_reading(key, event.data)
+
+            print(f"[RTDB Listener] Synced cloud data (path={event.path})")
 
         path = f"users/{uid}/live/latest"
         self._rtdb_listener = root_ref.child(path).listen(on_data_change)
-        print(f"DEBUG: RTDB Listener started for {path}")
+        print(f"[RTDB Listener] Started for {path}")
+
+        # Pull existing history into _series so trend analysis works immediately
+        threading.Thread(
+            target=self._pull_rtdb_history,
+            args=(uid,),
+            daemon=True,
+        ).start()
+
+    def _pull_rtdb_history(self, uid: str):
+        """Fetch history from RTDB and backfill _series for trend analysis.
+        
+        Without this, _get_trend() returns 'insufficient data' because
+        _series is empty when only hardware pushes data via RTDB (no simulator).
+        """
+        if not root_ref:
+            return
+        try:
+            history_ref = root_ref.child(f"users/{uid}/live/history")
+            snapshot = history_ref.get()
+            if not snapshot or not isinstance(snapshot, dict):
+                print("[RTDB History] No history data found in RTDB")
+                return
+
+            count = 0
+            with self._lock:
+                # Structure: history/{zone_id}/{sensor_id}/{push_key} → reading dict
+                for zone_id, sensors in snapshot.items():
+                    if not isinstance(sensors, dict):
+                        continue
+                    for sensor_id, entries in sensors.items():
+                        if not isinstance(entries, dict):
+                            continue
+                        key = f"{zone_id}:{sensor_id}"
+                        # Sort entries by push key (chronological in Firebase)
+                        sorted_entries = sorted(entries.items(), key=lambda x: x[0])
+                        # Only take last RTDB_HISTORY_LIMIT entries
+                        for _, val in sorted_entries[-RTDB_HISTORY_LIMIT:]:
+                            if isinstance(val, dict) and "zone_id" in val:
+                                try:
+                                    reading = SensorReading(**val)
+                                    self._series[key].append(reading)
+                                    # Update latest if this is newer
+                                    existing = self._latest.get(key)
+                                    if not existing or reading.timestamp > existing.timestamp:
+                                        self._latest[key] = reading
+                                    count += 1
+                                except Exception:
+                                    pass
+
+            print(f"[RTDB History] Backfilled {count} readings from cloud history")
+        except Exception as e:
+            print(f"[RTDB History] Error pulling history: {e}")
 
     def write(self, reading: SensorReading):
         self.write_batch([reading])
