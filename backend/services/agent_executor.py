@@ -45,6 +45,28 @@ ACTUATOR_ALIASES = {
     "pump_c": "pump_c", "pump c": "pump_c", "水泵c": "pump_c",
     "bed c": "pump_c", "bed_c": "pump_c", "c泵": "pump_c",
     "pam c": "pump_c",
+
+    # --- Sensor Power Channels ---
+    # Air Humidity 1
+    "sensor_air_rh_1": "sensor_air_rh_1", "air humidity 1": "sensor_air_rh_1", "1号湿度": "sensor_air_rh_1", "湿度1": "sensor_air_rh_1",
+    # Air Humidity 2
+    "sensor_air_rh_2": "sensor_air_rh_2", "air humidity 2": "sensor_air_rh_2", "2号湿度": "sensor_air_rh_2", "湿度2": "sensor_air_rh_2",
+    # Air Temp
+    "sensor_air_temp_1": "sensor_air_temp_1", "air temperature": "sensor_air_temp_1", "空气温度": "sensor_air_temp_1", "空温": "sensor_air_temp_1",
+    # Air Light
+    "sensor_air_light_1": "sensor_air_light_1", "greenhouse light": "sensor_air_light_1", "光照传感器": "sensor_air_light_1", "光照": "sensor_air_light_1",
+    # Bed A
+    "sensor_bed_a_temp": "sensor_bed_a_temp", "soil temperature a": "sensor_bed_a_temp", "A床土温": "sensor_bed_a_temp", "A床土壤温度": "sensor_bed_a_temp",
+    "sensor_bed_a_ph": "sensor_bed_a_ph", "soil ph a": "sensor_bed_a_ph", "A床ph": "sensor_bed_a_ph", "A床酸碱度": "sensor_bed_a_ph",
+    "sensor_bed_a_moisture": "sensor_bed_a_moisture", "soil moisture a": "sensor_bed_a_moisture", "A床水分": "sensor_bed_a_moisture", "A床土壤水分": "sensor_bed_a_moisture",
+    # Bed B
+    "sensor_bed_b_temp": "sensor_bed_b_temp", "soil temperature b": "sensor_bed_b_temp", "B床土温": "sensor_bed_b_temp", "B床土壤温度": "sensor_bed_b_temp",
+    "sensor_bed_b_ph": "sensor_bed_b_ph", "soil ph b": "sensor_bed_b_ph", "B床ph": "sensor_bed_b_ph", "B床酸碱度": "sensor_bed_b_ph",
+    "sensor_bed_b_moisture": "sensor_bed_b_moisture", "soil moisture b": "sensor_bed_b_moisture", "B床水分": "sensor_bed_b_moisture", "B床土壤水分": "sensor_bed_b_moisture",
+    # Bed C
+    "sensor_bed_c_temp": "sensor_bed_c_temp", "soil temperature c": "sensor_bed_c_temp", "C床土温": "sensor_bed_c_temp", "C床土壤温度": "sensor_bed_c_temp",
+    "sensor_bed_c_ph": "sensor_bed_c_ph", "soil ph c": "sensor_bed_c_ph", "C床ph": "sensor_bed_c_ph", "C床酸碱度": "sensor_bed_c_ph",
+    "sensor_bed_c_moisture": "sensor_bed_c_moisture", "soil moisture c": "sensor_bed_c_moisture", "C床水分": "sensor_bed_c_moisture", "C床土壤水分": "sensor_bed_c_moisture",
 }
 
 # Maximum pump-on duration (safety cap)
@@ -54,11 +76,21 @@ DEFAULT_PUMP_DURATION_SECONDS = 60
 # Intent parsing prompt for Gemini
 INTENT_PARSE_PROMPT = """You are an intent parser for a greenhouse digital twin system.
 The greenhouse has these actuators:
-- pump_a (Water Pump A) — controls irrigation for Bed A (Substrate A)
-- pump_b (Water Pump B) — controls irrigation for Bed B (Substrate B)
-- pump_c (Water Pump C) — controls irrigation for Bed C (Substrate C)
+- pump_a (Water Pump A) — controls irrigation for Bed A
+- pump_b (Water Pump B) — controls irrigation for Bed B
+- pump_c (Water Pump C) — controls irrigation for Bed C
+- sensor_air_rh_1 (Air Humidity 1 Power)
+- sensor_air_rh_2 (Air Humidity 2 Power)
+- sensor_air_temp_1 (Air Temperature Power)
+- sensor_air_light_1 (Greenhouse Light Power)
+- sensor_bed_a_temp, sensor_bed_a_ph, sensor_bed_a_moisture (Soil Sensors Bed A)
+- sensor_bed_b_temp, sensor_bed_b_ph, sensor_bed_b_moisture (Soil Sensors Bed B)
+- sensor_bed_c_temp, sensor_bed_c_ph, sensor_bed_c_moisture (Soil Sensors Bed C)
 
 Parse the user's natural language message into a structured JSON response.
+"关闭所有传感器" or "开启所有电源" means controlling all matching sensor_xxx actuators.
+"所有泵" means just pump_a/b/c.
+"全部关掉" / "所有开关" means EVERYTHING (pumps + sensors).
 
 ## Rules:
 1. If the user wants to control a specific pump, set intent="control_actuator"
@@ -359,8 +391,8 @@ class AgentExecutor:
                 taken.append(action_record)
                 self._log_action("execute", actuator_id, action, f"OK: {command.value}")
 
-                # Set auto-off timer for ON commands
-                if command == ActuatorState.ON and duration:
+                # Set auto-off timer for ON commands (Only for PUMPS)
+                if command == ActuatorState.ON and duration and result.type == "pump":
                     self._schedule_auto_off(actuator_id, duration)
             else:
                 taken.append({
