@@ -25,11 +25,11 @@ class Settings(BaseSettings):
 
     # Google Gemini AI
     gemini_api_key: Optional[str] = None
-    gemini_model: str = "gemini-2.5-pro"
+    gemini_model: str = "gemini-3-flash-preview"
     
     # Google Cloud Vertex AI
     gcp_project_id: Optional[str] = "agritwin-mrv"
-    gcp_location: str = "us-central1"
+    gcp_location: str = "global"
 
     # CORS Settings
     cors_origins: list[str] = [

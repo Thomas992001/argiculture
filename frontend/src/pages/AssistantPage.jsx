@@ -159,37 +159,40 @@ export default function AssistantPage() {
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
     const recognition = new SpeechRecognition();
     recognition.lang = voiceLang;
-    recognition.interimResults = true;
+    recognition.interimResults = false;
     recognition.continuous = false;
 
     recognition.onstart = () => setIsListening(true);
     recognition.onresult = (event) => {
-      const transcript = Array.from(event.results)
-        .map((r) => r[0].transcript)
-        .join("");
-      setInput(transcript);
-      if (event.results[0]?.isFinal) {
+      const transcript = event.results[0]?.[0]?.transcript?.trim();
+      if (transcript) {
+        setInput(transcript);
         setIsListening(false);
-        if (transcript.trim()) {
-          const lower = transcript.trim().toLowerCase();
-          if (HELLO_TWIN_TRIGGERS.some((t) => lower.includes(t))) {
-            triggerHelloTwin();
-          } else {
-            sendMessage(transcript.trim());
-          }
-          setInput("");
+        const lower = transcript.toLowerCase();
+        if (HELLO_TWIN_TRIGGERS.some((t) => lower.includes(t))) {
+          triggerHelloTwin();
+        } else {
+          sendMessage(transcript);
         }
+        setInput("");
       }
     };
-    recognition.onerror = () => setIsListening(false);
+    recognition.onerror = (event) => {
+      console.warn("Speech recognition error:", event.error);
+      setIsListening(false);
+    };
     recognition.onend = () => setIsListening(false);
 
     recognitionRef.current = recognition;
-    recognition.start();
+    try {
+      recognition.start();
+    } catch (e) {
+      setIsListening(false);
+    }
   }, [voiceLang, speechSupported]);
 
   const stopListening = useCallback(() => {
-    recognitionRef.current?.stop();
+    try { recognitionRef.current?.stop(); } catch (e) {}
     setIsListening(false);
   }, []);
 
@@ -229,7 +232,7 @@ export default function AssistantPage() {
     setMessages((prev) => [...prev, { id: Date.now(), text, isUser: true }]);
     setLoading(true);
     try {
-      const response = await api.agentChat(text);
+      const response = await api.agentChat(text, "default", voiceLang);
       addBotMessage(response.answer, {
         model: response.model, powered_by: response.powered_by,
         intent: response.intent, actions_taken: response.actions_taken,

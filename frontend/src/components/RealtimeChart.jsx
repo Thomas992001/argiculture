@@ -114,7 +114,7 @@ export default function RealtimeChart({
   }
 
   // ─── Single-series mode ────────────────────────────────────────────────
-  const chartData = (data || [])
+  const rawChartData = (data || [])
     .map((point) => {
       const ms = readingTimestampMs(point.timestamp);
       const value =
@@ -124,6 +124,15 @@ export default function RealtimeChart({
     })
     .filter(Boolean)
     .sort((a, b) => a.ms - b.ms);
+
+  const chartData = [];
+  const seenMs = new Set();
+  for (const pt of rawChartData) {
+    if (!seenMs.has(pt.ms)) {
+      seenMs.add(pt.ms);
+      chartData.push(pt);
+    }
+  }
 
   const startMs = chartData[0]?.ms;
   const endMs = chartData[chartData.length - 1]?.ms;

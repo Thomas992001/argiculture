@@ -180,6 +180,9 @@ class AgentExecutor:
             }
         except Exception as e:
             print(f"[AgentExecutor] Hello Twin error: {e}")
+            import traceback
+            with open("hello_twin_error.txt", "w", encoding="utf-8") as f:
+                f.write(traceback.format_exc())
             return self._fallback_hello_twin(context)
 
     def _fallback_hello_twin(self, context: str) -> dict:

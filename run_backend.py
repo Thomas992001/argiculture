@@ -17,5 +17,6 @@ if __name__ == "__main__":
         host=host,
         port=port,
         reload=not is_prod,
+        reload_dirs=["backend"] if not is_prod else None,
         log_level="info",
     )

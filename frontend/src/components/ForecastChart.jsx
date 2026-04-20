@@ -64,35 +64,31 @@ export default function ForecastChart({
   }
 
   // Merge history + forecast into one timeline (all timestamps in epoch-ms)
-  const rows = [];
-  const seen = new Set();
+  const rowsByMs = new Map();
 
   for (const p of history || []) {
     const ms = readingTimestampMs(p.timestamp);
     if (!Number.isFinite(ms)) continue;
-    if (seen.has(ms)) continue;
-    seen.add(ms);
-    rows.push({
-      ms,
-      actual: typeof p.value === "number" ? p.value : Number(p.value),
-    });
+    const row = rowsByMs.get(ms) || { ms };
+    row.actual = typeof p.value === "number" ? p.value : Number(p.value);
+    rowsByMs.set(ms, row);
   }
 
   let lastActual = null;
-  if (rows.length > 0) lastActual = rows[rows.length - 1].actual;
+  const sortedHistory = Array.from(rowsByMs.values()).sort((a, b) => a.ms - b.ms);
+  if (sortedHistory.length > 0) lastActual = sortedHistory[sortedHistory.length - 1].actual;
 
   for (const p of (forecastData?.points || [])) {
     const ms = readingTimestampMs(p.timestamp || p.time);
     if (!Number.isFinite(ms)) continue;
-    rows.push({
-      ms,
-      predicted: p.predicted_value ?? p.predicted,
-      lower: p.lower_bound ?? p.lower,
-      upper: p.upper_bound ?? p.upper,
-    });
+    const row = rowsByMs.get(ms) || { ms };
+    row.predicted = p.predicted_value ?? p.predicted;
+    row.lower = p.lower_bound ?? p.lower;
+    row.upper = p.upper_bound ?? p.upper;
+    rowsByMs.set(ms, row);
   }
 
-  rows.sort((a, b) => a.ms - b.ms);
+  const rows = Array.from(rowsByMs.values()).sort((a, b) => a.ms - b.ms);
 
   // Anchor forecast visually to the last actual
   if (lastActual != null && forecastData?.points?.length > 0) {
