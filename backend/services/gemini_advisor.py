@@ -283,17 +283,21 @@ class GeminiAdvisor:
         return None
 
     def _initialize(self):
-        if not settings.gemini_api_key or settings.gemini_api_key == "your-gemini-api-key-here":
-            self._init_error = "Gemini API key not configured"
+        if not settings.gcp_project_id:
+            self._init_error = "GCP Project ID not configured"
             return
 
         try:
             from google import genai
-            self._client = genai.Client(api_key=settings.gemini_api_key)
+            self._client = genai.Client(
+                vertexai=True, 
+                project=settings.gcp_project_id, 
+                location=settings.gcp_location
+            )
             self._model_name = settings.gemini_model
             self._active_model = settings.gemini_model
             self._initialized = True
-            print(f"[GeminiAdvisor] Initialized — primary: {settings.gemini_model}, fallbacks: {FALLBACK_MODELS}")
+            print(f"[GeminiAdvisor] Initialized Vertex AI — primary: {settings.gemini_model}, fallbacks: {FALLBACK_MODELS}")
         except Exception as e:
             self._init_error = str(e)
             print(f"[GeminiAdvisor] Init error: {e}")
