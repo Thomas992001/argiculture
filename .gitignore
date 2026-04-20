@@ -28,3 +28,7 @@ grafana-data/
 # ML model artifacts
 ml/models/*.pkl
 ml/models/*.joblib
+
+# Secrets
+*-firebase-adminsdk-*.json
+agritwin-*.json

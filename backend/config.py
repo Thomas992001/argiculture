@@ -24,8 +24,17 @@ class Settings(BaseSettings):
     ml_anomaly_sensitivity: float = 0.05
 
     # Google Gemini AI
-    gemini_api_key: str = "AIzaSyCS3Qqdg09alVakZurJk56xAHBiUmEijmc"
+    gemini_api_key: Optional[str] = None
     gemini_model: str = "gemini-3-flash-preview"
+
+    # CORS Settings
+    cors_origins: list[str] = [
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+        # 生产环境域名可在此处补充或通过 .env JSON array 注入: '["https://yourdomain.com"]'
+    ]
 
     # Firebase
     firebase_target_uid: str = "ZLwjf4x1vBPkcEHc015OhelwwHo1"
