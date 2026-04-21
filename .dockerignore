@@ -1,0 +1,13 @@
+# .dockerignore
+.git
+.venv
+__pycache__
+node_modules
+*.docx
+*.log
+.env
+.idea
+.vscode
+dist
+build
+backend/agritwin-mrv-firebase-adminsdk-*.json

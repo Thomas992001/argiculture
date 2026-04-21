@@ -1,6 +1,6 @@
 import { useState, useRef } from 'react'
 import { Leaf, Mail, Lock, UserPlus, UserCheck, ArrowLeft, Eye, EyeOff, User } from 'lucide-react'
-import { auth, db } from '../../../backend/firebaseConfig'
+import { auth, db } from '../firebase'
 import { signInWithEmailAndPassword, createUserWithEmailAndPassword, sendPasswordResetEmail } from 'firebase/auth'
 import { doc, setDoc, getDoc } from 'firebase/firestore'
 import '../styles/login.css'

@@ -118,6 +118,16 @@ async def lifespan(app: FastAPI):
     if settings.simulator_enabled:
         simulator.start(interval=settings.simulator_interval_seconds)
 
+    # 🚀 Auto-bind to Firebase RTDB on startup
+    # Ensures AI advisor has data immediately without waiting for frontend /api/simulator/bind
+    if settings.firebase_target_uid:
+        uid = settings.firebase_target_uid
+        tsdb.set_active_uid(uid)
+        tsdb.start_rtdb_listener(uid)
+        twin_state.pull_actuators_from_cloud(uid)
+        twin_state.start_control_listener(uid)
+        print(f"[Startup] Auto-bound to Firebase UID: {uid} from configuration")
+
     yield
 
     simulator.stop()
@@ -132,7 +142,7 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=settings.cors_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -203,3 +213,31 @@ async def websocket_endpoint(websocket: WebSocket):
         ws_manager.disconnect(websocket)
     except Exception:
         ws_manager.disconnect(websocket)
+
+# --- SPA Routing for Unified Deployment ---
+import os
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
+from starlette.exceptions import HTTPException as StarletteHTTPException
+
+dist_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "frontend", "dist")
+
+# Only mount if the dist directory exists (e.g. in Docker)
+if os.path.exists(dist_path):
+    # Mount assets folder explicitly if it exists
+    assets_path = os.path.join(dist_path, "assets")
+    if os.path.exists(assets_path):
+        app.mount("/assets", StaticFiles(directory=assets_path), name="assets")
+
+    # Catch-all route to serve the React SPA
+    @app.get("/{catchall:path}")
+    async def serve_spa(catchall: str):
+        # Prevent React from catching API or WS routes 
+        if catchall.startswith("api/") or catchall.startswith("ws"):
+            raise StarletteHTTPException(status_code=404, detail="Not Found")
+            
+        file_path = os.path.join(dist_path, catchall)
+        if os.path.isfile(file_path):
+            return FileResponse(file_path)
+            
+        return FileResponse(os.path.join(dist_path, "index.html"))

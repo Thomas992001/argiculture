@@ -14,6 +14,7 @@ from backend.services.gemini_advisor import gemini_advisor
 from backend.services.ai_advisor import advisor as rule_advisor, CROP_PROFILES, calculate_vpd, calculate_dew_point
 from backend.services.weather_service import weather_service
 from backend.services.automation_engine import automation_engine
+from backend.services.agent_executor import agent_executor
 from backend.database import tsdb
 
 router = APIRouter(prefix="/api/advisor", tags=["AI Advisor (Gemini)"])
@@ -41,6 +42,26 @@ class ChatResponseModel(BaseModel):
     model: str = ""
     powered_by: str = ""
     insights: Optional[List[dict]] = None
+
+
+class AgentChatRequest(BaseModel):
+    message: str
+    session_id: str = "default"
+    language: Optional[str] = None
+
+
+class AgentChatResponse(BaseModel):
+    answer: str
+    intent: str = "general_chat"
+    actions_taken: List[dict] = []
+    actions_proposed: List[dict] = []
+    action_id: Optional[str] = None
+    model: str = ""
+    powered_by: str = ""
+
+
+class ConfirmActionRequest(BaseModel):
+    action_id: str
 
 
 class InsightResponse(BaseModel):
@@ -97,6 +118,68 @@ async def clear_chat(session_id: str = "default"):
     """Clear conversation history to start fresh."""
     gemini_advisor.clear_chat(session_id)
     return {"status": "cleared", "session_id": session_id}
+
+
+# ── Agentic AI Endpoints ──
+
+@router.post("/agent-chat", response_model=AgentChatResponse)
+async def agent_chat(request: AgentChatRequest):
+    """
+    Agentic AI chat — parses natural language intent, executes actuator commands,
+    and returns results with action details. Supports Hello Twin wake word.
+    """
+    lang_map = {
+        "en": "English",
+        "zh": "Chinese (Simplified, 简体中文)",
+        "ms": "Bahasa Melayu",
+        "ta": "Tamil",
+    }
+    language = request.language
+
+    result = await agent_executor.agent_chat(request.message, language)
+    return AgentChatResponse(
+        answer=result.get("answer", ""),
+        intent=result.get("intent", "general_chat"),
+        actions_taken=result.get("actions_taken", []),
+        actions_proposed=result.get("actions_proposed", []),
+        action_id=result.get("action_id"),
+        model=result.get("model", ""),
+        powered_by=result.get("powered_by", ""),
+    )
+
+
+@router.get("/hello-twin", response_model=AgentChatResponse)
+async def hello_twin():
+    """Trigger a Hello Twin proactive greeting with full greenhouse status analysis."""
+    result = await agent_executor.hello_twin()
+    return AgentChatResponse(
+        answer=result.get("answer", ""),
+        intent=result.get("intent", "greeting"),
+        actions_taken=result.get("actions_taken", []),
+        actions_proposed=result.get("actions_proposed", []),
+        model=result.get("model", ""),
+        powered_by=result.get("powered_by", ""),
+    )
+
+
+@router.post("/confirm-action", response_model=AgentChatResponse)
+async def confirm_action(request: ConfirmActionRequest):
+    """Confirm and execute a previously proposed action set."""
+    result = await agent_executor.confirm_action(request.action_id)
+    return AgentChatResponse(
+        answer=result.get("answer", ""),
+        intent=result.get("intent", "control_actuator"),
+        actions_taken=result.get("actions_taken", []),
+        actions_proposed=result.get("actions_proposed", []),
+        model=result.get("model", ""),
+        powered_by=result.get("powered_by", ""),
+    )
+
+
+@router.get("/agent-log")
+async def get_agent_log(limit: int = Query(50, ge=1, le=200)):
+    """Retrieve the AI agent's execution audit log."""
+    return {"log": agent_executor.get_execution_log(limit)}
 
 
 # ── Creative AI Functions ──

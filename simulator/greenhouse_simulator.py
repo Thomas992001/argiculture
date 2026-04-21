@@ -182,6 +182,22 @@ class GreenhouseSimulator:
         readings = []
 
         for sensor_id, sensor in self._sensors.items():
+            # Check power state for this sensor (mapped to sensor_xxx actuator)
+            power_id = f"sensor_{sensor_id}"
+            power_state = self._actuator_states.get(power_id, ActuatorState.ON)
+
+            if power_state == ActuatorState.OFF:
+                readings.append(SensorReading(
+                    sensor_id=sensor.sensor_id,
+                    sensor_type=sensor.sensor_type,
+                    zone_id=sensor.zone_id,
+                    value=0.0,
+                    unit=sensor.unit,
+                    timestamp=get_now(),
+                    quality=0.0,  # 0.0 means completely offline
+                ))
+                continue
+
             effect = effects.get(sensor_id, 0.0)
             reading = sensor.generate(elapsed_hours, effect)
             readings.append(reading)

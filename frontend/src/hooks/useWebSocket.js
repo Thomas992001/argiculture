@@ -6,9 +6,12 @@ export function useWebSocket(url = null) {
   const wsRef = useRef(null);
   const reconnectTimer = useRef(null);
 
+  const isDev = import.meta.env.DEV;
   const wsUrl =
     url ||
-    `${window.location.protocol === "https:" ? "wss:" : "ws:"}//${window.location.host}/ws`;
+    (isDev
+      ? `ws://${window.location.hostname}:8000/ws`
+      : `${window.location.protocol === "https:" ? "wss:" : "ws:"}//${window.location.host}/ws`);
 
   const connect = useCallback(() => {
     try {

@@ -1,10 +1,11 @@
 from pydantic_settings import BaseSettings
+from pydantic import Field
 from typing import Optional
 
 
 class Settings(BaseSettings):
     backend_host: str = "0.0.0.0"
-    backend_port: int = 8000
+    backend_port: int = Field(8000, alias="PORT")
 
     mqtt_broker_host: str = "localhost"
     mqtt_broker_port: int = 1883
@@ -17,21 +18,36 @@ class Settings(BaseSettings):
     influxdb_bucket: str = "telemetry"
 
     simulator_interval_seconds: float = 5.0
-    simulator_enabled: bool = True
+    simulator_enabled: bool = False
 
     ml_forecast_horizon_minutes: int = 60
     ml_anomaly_sensitivity: float = 0.05
 
     # Google Gemini AI
-    gemini_api_key: str = "AIzaSyA1LbASezNydIziE2Buzto9MC2hZFsetak"
-    gemini_model: str = "gemini-2.5-flash"
+    gemini_api_key: Optional[str] = None
+    gemini_model: str = "gemini-3-flash-preview"
+    
+    # Google Cloud Vertex AI
+    gcp_project_id: Optional[str] = "agritwin-mrv"
+    gcp_location: str = "global"
+
+    # CORS Settings
+    cors_origins: list[str] = [
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+        # 生产环境域名可在此处补充或通过 .env JSON array 注入: '["https://yourdomain.com"]'
+    ]
 
     # Firebase
     firebase_target_uid: str = "ZLwjf4x1vBPkcEHc015OhelwwHo1"
 
-    class Config:
-        env_file = ".env"
-        env_file_encoding = "utf-8"
+    model_config = {
+        "env_file": ".env",
+        "env_file_encoding": "utf-8",
+        "extra": "ignore"
+    }
 
 
 settings = Settings()

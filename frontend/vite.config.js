@@ -12,10 +12,15 @@ export default defineConfig({
       "/api": {
         target: "http://localhost:8000",
         changeOrigin: true,
-      },
-      "/ws": {
-        target: "ws://localhost:8000",
-        ws: true,
+        configure: (proxy, _options) => {
+          proxy.on('error', (err, req, res) => {
+            console.warn(`[vite proxy error]: ${err.message}`);
+            if (res && !res.headersSent && res.writeHead) {
+               res.writeHead(502);
+               res.end('Proxy Error');
+            }
+          });
+        }
       },
     },
   },

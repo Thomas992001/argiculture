@@ -25,6 +25,7 @@ class TwinStateManager:
         self._alert_counter = 0
         self._firestore_watch = None
         self._actuator_sink: Optional[Callable[[str, ActuatorState], None]] = None
+        self.current_uid: Optional[str] = None
 
         self._initialize_zones()
         self._initialize_actuators()
@@ -33,6 +34,8 @@ class TwinStateManager:
         """Listen to control signals from Firestore to trigger actuators."""
         if not db_fs:
             return
+        
+        self.current_uid = uid
 
         if self._firestore_watch:
             self._firestore_watch.unsubscribe()
@@ -61,17 +64,17 @@ class TwinStateManager:
     def _initialize_zones(self):
         zone_defs = [
             ("zone_air", "Greenhouse Condition", ZoneType.GREENHOUSE_AIR,
-             ["air_rh_1", "air_rh_2"],
-             []),
+             ["air_rh_1", "air_rh_2", "air_temp_1", "air_light_1"],
+             ["sensor_air_rh_1", "sensor_air_rh_2", "sensor_air_temp_1", "sensor_air_light_1"]),
             ("zone_bed_a", "Substrate A", ZoneType.SUBSTRATE_BED_A,
              ["bed_a_temp", "bed_a_ph", "bed_a_moisture"],
-             ["pump_a"]),
+             ["pump_a", "sensor_bed_a_temp", "sensor_bed_a_ph", "sensor_bed_a_moisture"]),
             ("zone_bed_b", "Substrate B", ZoneType.SUBSTRATE_BED_B,
              ["bed_b_temp", "bed_b_ph", "bed_b_moisture"],
-             ["pump_b"]),
+             ["pump_b", "sensor_bed_b_temp", "sensor_bed_b_ph", "sensor_bed_b_moisture"]),
             ("zone_bed_c", "Substrate C", ZoneType.SUBSTRATE_BED_C,
              ["bed_c_temp", "bed_c_ph", "bed_c_moisture"],
-             ["pump_c"]),
+             ["pump_c", "sensor_bed_c_temp", "sensor_bed_c_ph", "sensor_bed_c_moisture"]),
         ]
         for zone_id, name, ztype, sensors, actuators in zone_defs:
             self._zones[zone_id] = Zone(
@@ -84,6 +87,20 @@ class TwinStateManager:
             ("pump_a", "Water Pump A", "pump", "zone_bed_a"),
             ("pump_b", "Water Pump B", "pump", "zone_bed_b"),
             ("pump_c", "Water Pump C", "pump", "zone_bed_c"),
+            # Sensor Power Channels (Mapped to Firestore keys: sensor_${id})
+            ("sensor_air_rh_1", "Air Humidity 1 Power", "sensor_power", "zone_air"),
+            ("sensor_air_rh_2", "Air Humidity 2 Power", "sensor_power", "zone_air"),
+            ("sensor_air_temp_1", "Air Temperature Power", "sensor_power", "zone_air"),
+            ("sensor_air_light_1", "Greenhouse Light Power", "sensor_power", "zone_air"),
+            ("sensor_bed_a_temp", "Soil Temp A Power", "sensor_power", "zone_bed_a"),
+            ("sensor_bed_a_ph", "Soil pH A Power", "sensor_power", "zone_bed_a"),
+            ("sensor_bed_a_moisture", "Soil Moisture A Power", "sensor_power", "zone_bed_a"),
+            ("sensor_bed_b_temp", "Soil Temp B Power", "sensor_power", "zone_bed_b"),
+            ("sensor_bed_b_ph", "Soil pH B Power", "sensor_power", "zone_bed_b"),
+            ("sensor_bed_b_moisture", "Soil Moisture B Power", "sensor_power", "zone_bed_b"),
+            ("sensor_bed_c_temp", "Soil Temp C Power", "sensor_power", "zone_bed_c"),
+            ("sensor_bed_c_ph", "Soil pH C Power", "sensor_power", "zone_bed_c"),
+            ("sensor_bed_c_moisture", "Soil Moisture C Power", "sensor_power", "zone_bed_c"),
         ]
         for aid, name, atype, zone_id in actuator_defs:
             self._actuators[aid] = Actuator(
@@ -114,7 +131,29 @@ class TwinStateManager:
                 self._actuator_sink(aid, state)
             except Exception as e:
                 print(f"[TwinState] Actuator sink error: {e}")
+        
+        # NEW: Sync to Firestore so the UI (ControlPage) reflects this change
+        self._sync_actuator_to_cloud(aid, state)
+        
         return result
+
+    def _sync_actuator_to_cloud(self, aid: str, state: ActuatorState):
+        """Push a single actuator state change to Firestore."""
+        if not db_fs or not self.current_uid:
+            return
+        
+        def _task():
+            try:
+                uid = self.current_uid
+                doc_ref = db_fs.collection("users").document(uid).collection("control").document("latest")
+                # Update only the specific control key (boolean value)
+                doc_ref.update({aid: (state == ActuatorState.ON)})
+                print(f"DEBUG: Synced {aid}={state.value} to Cloud for {uid}")
+            except Exception as e:
+                print(f"[TwinState] Error syncing {aid} to cloud: {e}")
+
+        import threading
+        threading.Thread(target=_task, daemon=True).start()
 
     def add_alert(self, severity: AlertSeverity, message: str,
                   sensor_id: str = None, zone_id: str = None,
@@ -198,6 +237,8 @@ class TwinStateManager:
         """Fetch the current cloud state and apply it to local actuators."""
         if not db_fs:
             return
+        
+        self.current_uid = uid
             
         def _task():
             try:

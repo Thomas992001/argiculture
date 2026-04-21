@@ -1,0 +1,9 @@
+Traceback (most recent call last):
+  File "D:\Argiculture\backend\services\agent_executor.py", line 172, in hello_twin
+    self._log_action("hello_twin", "greeting", {}, response[:200])
+  File "D:\Argiculture\backend\services\agent_executor.py", line 580, in _log_action
+    print(f"[AgentExecutor] LOG: {action_type} → {target} = {result}")
+  File "C:\Program Files\WindowsApps\PythonSoftwareFoundation.Python.3.12_3.12.2800.0_x64__qbz5n2kfra8p0\Lib\encodings\cp1252.py", line 19, in encode
+    return codecs.charmap_encode(input,self.errors,encoding_table)[0]
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+UnicodeEncodeError: 'charmap' codec can't encode character '\u2192' in position 32: character maps to <undefined>

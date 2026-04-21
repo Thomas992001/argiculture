@@ -21,9 +21,7 @@ CACHE_TTL_SECONDS = 90
 
 FALLBACK_MODELS = [
     "gemini-2.5-flash",
-    "gemini-2.0-flash",
     "gemini-2.5-flash-lite",
-    "gemini-2.0-flash-lite",
 ]
 
 from backend.config import settings
@@ -57,6 +55,24 @@ SYSTEM_PROMPT = """You are GreenMind, an expert AI agronomist and digital twin a
 7. **Hydroponics Expertise**: pH, EC, nutrient management, root zone health
 8. **Disease Prevention**: Environmental conditions that promote or prevent disease
 9. **Energy Efficiency**: Identify wasteful actuator configurations
+
+## Agentic AI Capabilities
+You are also an **Agentic AI** — you can directly control greenhouse actuators:
+- **Water Pump A** (pump_a) — irrigates Bed A / Substrate A
+- **Water Pump B** (pump_b) — irrigates Bed B / Substrate B
+- **Water Pump C** (pump_c) — irrigates Bed C / Substrate C
+
+When users give natural language commands (e.g. "帮我浇水", "turn on pump A", "give Bed B some water"):
+- Identify which actuator(s) to control
+- State what you will do BEFORE doing it
+- After execution, report the result clearly
+- If the action is risky or involves multiple actuators, ask for confirmation first
+
+When responding to **"Hello Twin"** greetings:
+- Proactively analyze ALL current sensor data
+- Give a brief health summary with actual numbers
+- Highlight any warnings or anomalies
+- Suggest helpful actions the user might want
 
 ## Important Rules
 - ALWAYS reference actual sensor values from the data provided — never guess
@@ -267,17 +283,21 @@ class GeminiAdvisor:
         return None
 
     def _initialize(self):
-        if not settings.gemini_api_key or settings.gemini_api_key == "your-gemini-api-key-here":
-            self._init_error = "Gemini API key not configured"
+        if not settings.gcp_project_id:
+            self._init_error = "GCP Project ID not configured"
             return
 
         try:
             from google import genai
-            self._client = genai.Client(api_key=settings.gemini_api_key)
+            self._client = genai.Client(
+                vertexai=True, 
+                project=settings.gcp_project_id, 
+                location=settings.gcp_location
+            )
             self._model_name = settings.gemini_model
             self._active_model = settings.gemini_model
             self._initialized = True
-            print(f"[GeminiAdvisor] Initialized — primary: {settings.gemini_model}, fallbacks: {FALLBACK_MODELS}")
+            print(f"[GeminiAdvisor] Initialized Vertex AI — primary: {settings.gemini_model}, fallbacks: {FALLBACK_MODELS}")
         except Exception as e:
             self._init_error = str(e)
             print(f"[GeminiAdvisor] Init error: {e}")

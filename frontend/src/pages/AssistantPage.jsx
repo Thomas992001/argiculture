@@ -28,6 +28,8 @@ import {
   Volume2,
   VolumeX,
   Languages,
+  Hand,
+  Activity,
 } from "lucide-react";
 import { api } from "../api/client";
 import { AiInsightPanel } from "../components/AiInsightCards";
@@ -39,7 +41,13 @@ const LANGUAGES = [
   { code: "ta-IN", label: "தமிழ்", ttsLang: "ta-IN" },
 ];
 
+const HELLO_TWIN_TRIGGERS = [
+  "hello twin", "hi twin", "hey twin", "halo twin",
+  "你好孪生", "你好双胞", "嗨孪生",
+];
+
 const QUICK_ACTIONS = [
+  { label: "👋 Hello Twin", icon: Hand, color: "text-amber-400", isHelloTwin: true },
   { label: "How is my greenhouse?", icon: Sparkles, color: "text-greenhouse-400" },
   { label: "Any problems?", icon: Lightbulb, color: "text-yellow-400" },
   { label: "Should I water now?", icon: Droplets, color: "text-blue-400" },
@@ -47,10 +55,11 @@ const QUICK_ACTIONS = [
   { label: "Temperature analysis", icon: Thermometer, color: "text-red-400" },
   { label: "Check pH and EC", icon: Beaker, color: "text-green-400" },
   { label: "What crops suit my setup?", icon: Leaf, color: "text-greenhouse-400" },
-  { label: "How to prevent root rot?", icon: BookOpen, color: "text-teal-400" },
 ];
 
 const AI_TOOLS = [
+  { id: "hellotwin", label: "Hello Twin", icon: Hand, color: "text-amber-400",
+    description: "Proactive AI greeting with full status analysis" },
   { id: "report", label: "Daily Report", icon: FileText, color: "text-orange-400",
     description: "Generate a full AI-powered greenhouse analysis report" },
   { id: "schedule", label: "Smart Schedule", icon: Calendar, color: "text-blue-400",
@@ -112,6 +121,7 @@ export default function AssistantPage() {
   const [isListening, setIsListening] = useState(false);
   const [ttsEnabled, setTtsEnabled] = useState(true);
   const [showLangMenu, setShowLangMenu] = useState(false);
+  const [confirming, setConfirming] = useState(false);
   const scrollRef = useRef(null);
   const inputRef = useRef(null);
   const fileInputRef = useRef(null);
@@ -149,32 +159,40 @@ export default function AssistantPage() {
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
     const recognition = new SpeechRecognition();
     recognition.lang = voiceLang;
-    recognition.interimResults = true;
+    recognition.interimResults = false;
     recognition.continuous = false;
 
     recognition.onstart = () => setIsListening(true);
     recognition.onresult = (event) => {
-      const transcript = Array.from(event.results)
-        .map((r) => r[0].transcript)
-        .join("");
-      setInput(transcript);
-      if (event.results[0]?.isFinal) {
+      const transcript = event.results[0]?.[0]?.transcript?.trim();
+      if (transcript) {
+        setInput(transcript);
         setIsListening(false);
-        if (transcript.trim()) {
-          sendMessage(transcript.trim());
-          setInput("");
+        const lower = transcript.toLowerCase();
+        if (HELLO_TWIN_TRIGGERS.some((t) => lower.includes(t))) {
+          triggerHelloTwin();
+        } else {
+          sendMessage(transcript);
         }
+        setInput("");
       }
     };
-    recognition.onerror = () => setIsListening(false);
+    recognition.onerror = (event) => {
+      console.warn("Speech recognition error:", event.error);
+      setIsListening(false);
+    };
     recognition.onend = () => setIsListening(false);
 
     recognitionRef.current = recognition;
-    recognition.start();
+    try {
+      recognition.start();
+    } catch (e) {
+      setIsListening(false);
+    }
   }, [voiceLang, speechSupported]);
 
   const stopListening = useCallback(() => {
-    recognitionRef.current?.stop();
+    try { recognitionRef.current?.stop(); } catch (e) {}
     setIsListening(false);
   }, []);
 
@@ -189,19 +207,74 @@ export default function AssistantPage() {
     speakText(text);
   }, [speakText]);
 
+  const triggerHelloTwin = async () => {
+    setMessages((prev) => [...prev, { id: Date.now(), text: "👋 Hello Twin", isUser: true }]);
+    setLoading(true);
+    try {
+      const response = await api.helloTwin();
+      addBotMessage(response.answer, {
+        model: response.model, powered_by: response.powered_by,
+        intent: response.intent, actions_taken: response.actions_taken,
+        actions_proposed: response.actions_proposed, action_id: response.action_id,
+      });
+    } catch {
+      addBotMessage("Sorry, Hello Twin failed. Please check if the backend is running.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const sendMessage = async (text) => {
+    const lower = text.toLowerCase().trim();
+    if (HELLO_TWIN_TRIGGERS.some((t) => lower.includes(t))) {
+      return triggerHelloTwin();
+    }
     setMessages((prev) => [...prev, { id: Date.now(), text, isUser: true }]);
     setLoading(true);
     try {
-      const response = await api.chatWithAdvisor(text);
+      const response = await api.agentChat(text, "default", voiceLang);
       addBotMessage(response.answer, {
-        model: response.model, powered_by: response.powered_by, insights: response.insights,
+        model: response.model, powered_by: response.powered_by,
+        intent: response.intent, actions_taken: response.actions_taken,
+        actions_proposed: response.actions_proposed, action_id: response.action_id,
       });
     } catch {
       addBotMessage("Sorry, something went wrong. Please check if the backend is running.");
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleConfirmAction = async (actionId) => {
+    setConfirming(true);
+    try {
+      const response = await api.confirmAction(actionId);
+      setMessages((prev) => {
+        const updated = prev.map((msg) =>
+          msg.action_id === actionId ? { ...msg, actions_proposed: [], action_id: null } : msg
+        );
+        return [...updated, {
+          id: Date.now() + Math.random(), text: response.answer, isUser: false,
+          powered_by: response.powered_by, intent: response.intent,
+          actions_taken: response.actions_taken, actions_proposed: [],
+        }];
+      });
+    } catch {
+      addBotMessage("Failed to confirm action. Please try again.");
+    } finally {
+      setConfirming(false);
+    }
+  };
+
+  const handleRejectAction = (actionId) => {
+    setMessages((prev) => {
+      const updated = prev.map((msg) =>
+        msg.action_id === actionId ? { ...msg, actions_proposed: [], action_id: null } : msg
+      );
+      return [...updated, {
+        id: Date.now() + Math.random(), text: "❌ Action cancelled by user.", isUser: false, intent: "cancelled",
+      }];
+    });
   };
 
   const handleSubmit = (e) => {
@@ -217,6 +290,10 @@ export default function AssistantPage() {
     try {
       let result;
       switch (toolId) {
+        case "hellotwin":
+          await triggerHelloTwin();
+          setLoading(false);
+          return;
         case "report":
           setMessages((prev) => [...prev, { id: Date.now(), text: "Generate a daily greenhouse report", isUser: true }]);
           result = await api.getDailyReport();
@@ -354,7 +431,7 @@ export default function AssistantPage() {
 
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
         {/* Chat — main area */}
-        <div className="lg:col-span-3 flex flex-col bg-gray-900/50 rounded-xl border border-gray-800 overflow-hidden" style={{ minHeight: "560px" }}>
+        <div className="lg:col-span-3 flex flex-col bg-gray-900/50 backdrop-blur-sm rounded-xl border border-gray-800 overflow-hidden" style={{ height: "700px" }}>
           {/* Messages */}
           <div ref={scrollRef} className="flex-1 overflow-y-auto p-5 space-y-4">
             {messages.length === 0 && (
@@ -368,8 +445,12 @@ export default function AssistantPage() {
                 </p>
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-2 max-w-2xl">
                   {QUICK_ACTIONS.map((q) => (
-                    <button key={q.label} onClick={() => sendMessage(q.label)}
-                      className="flex items-center gap-2 px-3 py-2.5 rounded-lg bg-gray-800 border border-gray-700 text-xs text-gray-400 hover:text-white hover:border-greenhouse-600/40 transition-all text-left">
+                    <button key={q.label} onClick={() => q.isHelloTwin ? triggerHelloTwin() : sendMessage(q.label)}
+                      className={`flex items-center gap-2 px-3 py-2.5 rounded-lg border text-xs transition-all text-left ${
+                        q.isHelloTwin
+                          ? "bg-gradient-to-r from-amber-500/20 to-orange-500/20 border-amber-500/40 text-amber-400 hover:from-amber-500/30 hover:to-orange-500/30 font-medium"
+                          : "bg-gray-800 border-gray-700 text-gray-400 hover:text-white hover:border-greenhouse-600/40"
+                      }`}>
                       <q.icon size={14} className={`${q.color} shrink-0`} />
                       <span>{q.label}</span>
                     </button>
@@ -391,13 +472,58 @@ export default function AssistantPage() {
                   {msg.isUser ? (
                     <p className="text-sm text-blue-200">{msg.text}</p>
                   ) : (
-                    <MarkdownRenderer text={msg.text} />
+                    <>
+                      <MarkdownRenderer text={msg.text} />
+                      {/* Actions Taken Cards */}
+                      {msg.actions_taken && msg.actions_taken.length > 0 && (
+                        <div className="mt-2 space-y-1.5">
+                          {msg.actions_taken.map((a, i) => (
+                            <div key={i} className={`flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-xs border ${
+                              a.success ? "bg-green-500/10 border-green-500/30 text-green-400" : "bg-red-500/10 border-red-500/30 text-red-400"
+                            }`}>
+                              {a.success ? <CheckCircle size={12} /> : <XCircle size={12} />}
+                              <span className="font-medium">{a.actuator_name || a.actuator_id}</span>
+                              <span className="text-gray-400">→</span>
+                              <span className="uppercase font-mono">{a.command}</span>
+                              {a.duration_seconds && <span className="text-gray-500 ml-auto">{a.duration_seconds}s</span>}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                      {/* Actions Proposed Cards with Confirm/Reject */}
+                      {msg.actions_proposed && msg.actions_proposed.length > 0 && msg.action_id && (
+                        <div className="mt-2 space-y-2">
+                          <div className="space-y-1.5">
+                            {msg.actions_proposed.map((a, i) => (
+                              <div key={i} className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-xs bg-amber-500/10 border border-amber-500/30 text-amber-400">
+                                <Activity size={12} />
+                                <span className="font-medium">{a.actuator_name || a.actuator_id}</span>
+                                <span className="text-gray-400">→</span>
+                                <span className="uppercase font-mono">{a.command}</span>
+                                {a.duration_seconds && <span className="text-gray-500 ml-auto">{a.duration_seconds}s</span>}
+                              </div>
+                            ))}
+                          </div>
+                          <div className="flex gap-2">
+                            <button onClick={() => handleConfirmAction(msg.action_id)} disabled={confirming}
+                              className="flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg bg-green-600 hover:bg-green-500 disabled:bg-gray-700 text-white text-xs font-medium transition-colors">
+                              {confirming ? <Loader2 size={12} className="animate-spin" /> : <CheckCircle size={12} />} Confirm
+                            </button>
+                            <button onClick={() => handleRejectAction(msg.action_id)} disabled={confirming}
+                              className="flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg bg-gray-700 hover:bg-gray-600 disabled:bg-gray-800 text-gray-300 text-xs font-medium transition-colors">
+                              <XCircle size={12} /> Reject
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                    </>
                   )}
                   {msg.powered_by && (
                     <div className="mt-2 pt-1.5 border-t border-gray-700/30 flex items-center gap-1.5">
                       <Zap size={9} className={msg.powered_by === "google_gemini" ? "text-greenhouse-400" : "text-yellow-400"} />
                       <span className="text-[9px] text-gray-600">
                         {msg.powered_by === "google_gemini" ? `Google Gemini • ${msg.model || ""}` : "Local AI (set API key for Gemini)"}
+                        {msg.intent && msg.intent !== "general_chat" && ` • ${msg.intent}`}
                       </span>
                     </div>
                   )}
@@ -518,7 +644,7 @@ export default function AssistantPage() {
               {AI_TOOLS.map((tool) => (
                 <button key={tool.id}
                   onClick={() => {
-                    if (tool.id === "report" || tool.id === "schedule") { runTool(tool.id); }
+                    if (tool.id === "report" || tool.id === "schedule" || tool.id === "hellotwin") { runTool(tool.id); }
                     else { setActiveTool(tool.id); setToolInput(""); }
                   }}
                   disabled={loading}

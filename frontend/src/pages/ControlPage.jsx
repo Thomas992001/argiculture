@@ -1,47 +1,27 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import {
-  Droplets,
-  Thermometer,
-  Beaker,
-  Sun,
   Wifi,
   WifiOff,
   CircleDot,
   Loader2,
   AlertOctagon,
+  AlertCircle,
+  AlertTriangle,
+  Sparkles,
 } from "lucide-react";
 import { api } from "../api/client";
 import { onAuthStateChanged } from "firebase/auth";
 import { db, auth } from "../firebase";
 import { onSnapshot, doc, setDoc } from "firebase/firestore";
 import { useRTDBData } from "../hooks/useRTDBData";
+import { useAlerts } from "../contexts/AlertsProvider";
 import AlertPanel from "../components/AlertPanel";
-
-
-
-const SENSOR_DEVICE_DEFS = [
-  { id: "air_rh_1", label: "Air Humidity Sensor 1", type: "humidity", zone: "zone_air", icon: Droplets, color: "blue" },
-  { id: "air_rh_2", label: "Air Humidity Sensor 2", type: "humidity", zone: "zone_air", icon: Droplets, color: "blue" },
-  { id: "air_temp_1", label: "Air Temperature Sensor", type: "temperature", zone: "zone_air", icon: Thermometer, color: "red" },
-  { id: "air_light_1", label: "Greenhouse Light Sensor", type: "light", zone: "zone_air", icon: Sun, color: "yellow" },
-  { id: "bed_a_temp", label: "Soil Temperature A", type: "soil_temperature", zone: "zone_bed_a", icon: Thermometer, color: "orange" },
-  { id: "bed_a_ph", label: "Soil pH Sensor A", type: "soil_ph", zone: "zone_bed_a", icon: Beaker, color: "green" },
-  { id: "bed_a_moisture", label: "Soil Moisture Sensor A", type: "soil_moisture", zone: "zone_bed_a", icon: Droplets, color: "cyan" },
-  { id: "bed_b_temp", label: "Soil Temperature B", type: "soil_temperature", zone: "zone_bed_b", icon: Thermometer, color: "orange" },
-  { id: "bed_b_ph", label: "Soil pH Sensor B", type: "soil_ph", zone: "zone_bed_b", icon: Beaker, color: "green" },
-  { id: "bed_b_moisture", label: "Soil Moisture Sensor B", type: "soil_moisture", zone: "zone_bed_b", icon: Droplets, color: "cyan" },
-  { id: "bed_c_temp", label: "Soil Temperature C", type: "soil_temperature", zone: "zone_bed_c", icon: Thermometer, color: "orange" },
-  { id: "bed_c_ph", label: "Soil pH Sensor C", type: "soil_ph", zone: "zone_bed_c", icon: Beaker, color: "green" },
-  { id: "bed_c_moisture", label: "Soil Moisture Sensor C", type: "soil_moisture", zone: "zone_bed_c", icon: Droplets, color: "cyan" },
-];
-
-const PUMP_DEVICE_DEFS = [
-  { id: "pump_a", label: "Water Pump A", type: "pump", zone: "zone_bed_a", icon: Droplets, color: "teal" },
-  { id: "pump_b", label: "Water Pump B", type: "pump", zone: "zone_bed_b", icon: Droplets, color: "teal" },
-  { id: "pump_c", label: "Water Pump C", type: "pump", zone: "zone_bed_c", icon: Droplets, color: "teal" },
-];
-
-const POWER_DEVICE_DEFS = [...SENSOR_DEVICE_DEFS, ...PUMP_DEVICE_DEFS];
+import {
+  SENSOR_DEVICE_DEFS,
+  PUMP_DEVICE_DEFS,
+  ALL_DEVICE_DEFS as POWER_DEVICE_DEFS,
+  controlFirestoreKey,
+} from "../utils/sensorDevices";
 
 const COLOR_MAP = {
   blue: { text: "text-blue-400", bg: "bg-blue-500/10", border: "border-blue-500/20" },
@@ -70,18 +50,14 @@ const UNIT_MAP = {
   pump: "",
 };
 
-function sensorFirestoreKey(id) {
-  return `sensor_${id}`;
-}
-
-function controlFirestoreKey(device) {
-  if (device.type === "pump") return device.id;
-  return sensorFirestoreKey(device.id);
-}
 
 function resolveReading(sensorData, sensor) {
-  const sensorKey = `${sensor.zone}:${sensor.type}`;
-  let reading = sensorData[sensorKey];
+  // Try exact device key first (zone:sensor_id), e.g. zone_air:air_rh_1
+  let reading = sensorData[`${sensor.zone}:${sensor.id}`];
+  // Fall back to zone:type for backwards compat
+  if (reading?.value == null) {
+    reading = sensorData[`${sensor.zone}:${sensor.type}`];
+  }
   if (
     sensor.type === "light" &&
     (reading?.value == null || reading?.value === undefined)
@@ -201,15 +177,30 @@ function SensorPowerRow({ sensor, sensorData, cloudStates, onToggle }) {
 
 export default function ControlPage() {
   const [cloudStates, setCloudStates] = useState({});
-  const [alerts, setAlerts] = useState([]);
+  const [backendAlerts, setBackendAlerts] = useState([]);
   const { data: rtdbData } = useRTDBData();
+  const {
+    alerts: anomalyAlerts,
+    topAlert,
+    attentionNeeded,
+    criticalCount,
+    warningCount,
+  } = useAlerts();
 
   const sensorData = rtdbData || {};
+
+  const mergedAlerts = useMemo(() => {
+    const covered = new Set(anomalyAlerts.map((a) => a.sensor_id));
+    const extras = (backendAlerts || []).filter(
+      (a) => !a.sensor_id || !covered.has(a.sensor_id)
+    );
+    return [...anomalyAlerts, ...extras];
+  }, [anomalyAlerts, backendAlerts]);
 
   const fetchAlerts = async () => {
     try {
       const alertsData = await api.getAlerts();
-      setAlerts(alertsData);
+      setBackendAlerts(alertsData || []);
     } catch { }
   };
 
@@ -303,6 +294,14 @@ export default function ControlPage() {
         </p>
       </div>
 
+      {attentionNeeded && topAlert && (
+        <ControlAttentionBanner
+          alert={topAlert}
+          criticalCount={criticalCount}
+          warningCount={warningCount}
+        />
+      )}
+
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-2 space-y-6">
           <div>
@@ -354,8 +353,87 @@ export default function ControlPage() {
         </div>
 
         <div>
-          <h3 className="text-sm font-medium text-gray-400 mb-3">Alerts</h3>
-          <AlertPanel alerts={alerts} onRefresh={fetchAlerts} />
+          <h3 className="text-sm font-medium text-gray-400 mb-3 flex items-center gap-2">
+            Alerts
+            {mergedAlerts.length > 0 && (
+              <span className="text-[10px] px-2 py-0.5 rounded-full bg-red-500/15 border border-red-500/30 text-red-300">
+                {mergedAlerts.length} active
+              </span>
+            )}
+          </h3>
+          <AlertPanel alerts={mergedAlerts} onRefresh={fetchAlerts} />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ControlAttentionBanner({ alert, criticalCount, warningCount }) {
+  const isCritical = alert.severity === "critical";
+  const Icon = isCritical ? AlertCircle : AlertTriangle;
+  const palette = isCritical
+    ? {
+        bg: "from-red-500/15 via-rose-500/10 to-orange-500/5",
+        border: "border-red-500/30",
+        ring: "ring-red-500/30",
+        icon: "text-red-300",
+        title: "text-red-200",
+        glow: "bg-red-500/20",
+      }
+    : {
+        bg: "from-yellow-500/15 via-amber-500/10 to-orange-500/5",
+        border: "border-yellow-500/30",
+        ring: "ring-yellow-500/25",
+        icon: "text-yellow-300",
+        title: "text-yellow-200",
+        glow: "bg-yellow-500/20",
+      };
+
+  const unit = alert.unit || "";
+
+  return (
+    <div
+      className={`relative overflow-hidden rounded-2xl border ${palette.border} bg-gradient-to-br ${palette.bg} backdrop-blur-sm ring-1 ${palette.ring} p-4 animate-slide-up`}
+    >
+      <div className={`absolute -top-12 -right-12 w-40 h-40 rounded-full blur-3xl ${palette.glow}`} />
+      <div className="relative flex items-start gap-4">
+        <div className={`shrink-0 w-10 h-10 rounded-xl ${palette.glow} flex items-center justify-center`}>
+          <Icon size={20} className={palette.icon} />
+        </div>
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 flex-wrap">
+            <p className={`text-sm font-semibold ${palette.title}`}>
+              {alert.sensor_id} needs attention
+            </p>
+            <span className="text-[9px] uppercase tracking-wider font-bold px-2 py-0.5 rounded-full bg-black/40 text-white">
+              {alert.severity}
+            </span>
+          </div>
+          <p className="text-[13px] text-gray-200 mt-1">{alert.message}</p>
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mt-1.5 text-[11px] text-gray-400">
+            {alert.value != null && (
+              <span>
+                Current: <span className="text-white font-medium">{alert.value.toFixed(1)}{unit && ` ${unit}`}</span>
+              </span>
+            )}
+            {alert.expected_min != null && alert.expected_max != null && (
+              <span>Expected: {alert.expected_min}–{alert.expected_max}{unit && ` ${unit}`}</span>
+            )}
+            {alert.zone_id && <span>Zone: {alert.zone_id}</span>}
+            {(criticalCount + warningCount > 1) && (
+              <span className="text-gray-300">
+                +{criticalCount + warningCount - 1} more
+              </span>
+            )}
+          </div>
+          {alert.suggestion && (
+            <div className="mt-3 flex items-start gap-2 p-3 rounded-xl bg-white/[0.06] border border-white/10">
+              <Sparkles size={14} className="text-amber-300 mt-0.5 shrink-0" />
+              <p className="text-[12px] text-gray-200 leading-relaxed">
+                {alert.suggestion}
+              </p>
+            </div>
+          )}
         </div>
       </div>
     </div>
