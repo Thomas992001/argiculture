@@ -2,31 +2,28 @@ import firebase_admin
 from firebase_admin import credentials, db, firestore
 from datetime import datetime, timezone, timedelta
 import os
-
-# Service account key (committed with repo — same folder as this file)
-SERVICE_ACCOUNT_PATH = os.path.join(
-    os.path.dirname(__file__),
-    "agritwin-mrv-firebase-adminsdk-fbsvc-cb08135bf7.json",
-)
-DATABASE_URL = "https://agritwin-mrv-default-rtdb.firebaseio.com/"
+import json
+from backend.config import settings
 
 def initialize_firebase():
-    """Initializes the Firebase Admin SDK."""
+    """Initializes the Firebase Admin SDK using settings."""
     if not firebase_admin._apps:
-        # Priority 1: Environment variable (JSON string)
-        cred_json = os.environ.get("FIREBASE_CREDENTIALS")
+        # Priority: Settings (Environment variable FIREBASE_CREDENTIALS)
+        cred_json = settings.firebase_credentials
+        
         if cred_json:
-            import json
-            cred_dict = json.loads(cred_json)
-            cred = credentials.Certificate(cred_dict)
-        # Priority 2: Local JSON file
-        elif os.path.exists(SERVICE_ACCOUNT_PATH):
-            cred = credentials.Certificate(SERVICE_ACCOUNT_PATH)
+            try:
+                cred_dict = json.loads(cred_json)
+                cred = credentials.Certificate(cred_dict)
+            except Exception as e:
+                print(f"Error parsing FIREBASE_CREDENTIALS: {e}")
+                raise
         else:
-            raise FileNotFoundError("Firebase service account credentials not found in environment or file.")
+            print("WARNING: FIREBASE_CREDENTIALS not found in environment. Firebase features will be disabled.")
+            return None, None
 
         firebase_admin.initialize_app(cred, {
-            'databaseURL': DATABASE_URL
+            'databaseURL': settings.firebase_database_url
         })
     return db.reference('/'), firestore.client()
 

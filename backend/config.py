@@ -13,7 +13,7 @@ class Settings(BaseSettings):
     mqtt_password: Optional[str] = None
 
     influxdb_url: str = "http://localhost:8086"
-    influxdb_token: str = "my-super-secret-token"
+    influxdb_token: str = Field("my-super-secret-token", alias="INFLUXDB_TOKEN")
     influxdb_org: str = "greenhouse"
     influxdb_bucket: str = "telemetry"
 
@@ -24,7 +24,7 @@ class Settings(BaseSettings):
     ml_anomaly_sensitivity: float = 0.05
 
     # Google Gemini AI
-    gemini_api_key: Optional[str] = None
+    gemini_api_key: Optional[str] = Field(None, alias="GEMINI_API_KEY")
     gemini_model: str = "gemini-3-flash-preview"
     
     # Google Cloud Vertex AI
@@ -37,16 +37,18 @@ class Settings(BaseSettings):
         "http://127.0.0.1:5173",
         "http://localhost:3000",
         "http://127.0.0.1:3000",
-        # 生产环境域名可在此处补充或通过 .env JSON array 注入: '["https://yourdomain.com"]'
     ]
 
-    # Firebase
+    # Firebase Admin SDK
+    firebase_credentials: Optional[str] = Field(None, alias="FIREBASE_CREDENTIALS")
+    firebase_database_url: str = "https://agritwin-mrv-default-rtdb.firebaseio.com/"
     firebase_target_uid: str = "ZLwjf4x1vBPkcEHc015OhelwwHo1"
 
     model_config = {
         "env_file": ".env",
         "env_file_encoding": "utf-8",
-        "extra": "ignore"
+        "extra": "ignore",
+        "populate_by_name": True
     }
 
 
