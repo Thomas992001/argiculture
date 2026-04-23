@@ -40,14 +40,29 @@ gcloud projects add-iam-policy-binding $PROJECT_ID `
     --role="roles/aiplatform.user" `
     --condition=None
 
-Write-Host "--- 3. Preparing Environment Variables ---" -ForegroundColor Cyan
-$FIREBASE_JSON_PATH = "backend/agritwin-mrv-firebase-adminsdk-fbsvc-cb08135bf7.json"
-if (Test-Path $FIREBASE_JSON_PATH) {
-    $JSON_CONTENT = Get-Content $FIREBASE_JSON_PATH -Raw
-    # Indent JSON lines by 2 spaces for YAML block scalar compatibility
-    $INDENTED_JSON = $JSON_CONTENT -split "`r?`n" | ForEach-Object { "  $_" } | Out-String
-    Write-Host "Firebase credentials loaded and formatted." -ForegroundColor Green
-} 
+Write-Host "--- 3. Preparing Environment Variables from .env ---" -ForegroundColor Cyan
+if (Test-Path ".env") {
+    $DOTENV = Get-Content ".env"
+    $ENV_VARS = @{}
+    foreach ($line in $DOTENV) {
+        if ($line -match "^([^#=]+)=(.*)$") {
+            $key = $matches[1].Trim()
+            $val = $matches[2].Trim()
+            # Remove quotes if present
+            if ($val -match "^'(.*)'$") { $val = $matches[1] }
+            elseif ($val -match "^`"(.*)`"$") { $val = $matches[1] }
+            $ENV_VARS[$key] = $val
+        }
+    }
+    Write-Host "Loaded variables from .env" -ForegroundColor Green
+} else {
+    Write-Warning ".env file not found. Using system environment variables."
+    $ENV_VARS = $env:ALLUSERSPROFILE # Just a placeholder, we'll use $env:
+}
+
+$FIREBASE_CREDENTIALS = $ENV_VARS["FIREBASE_CREDENTIALS"] -replace "'", ""
+$GEMINI_API_KEY = $ENV_VARS["GEMINI_API_KEY"]
+$INFLUXDB_TOKEN = $ENV_VARS["INFLUXDB_TOKEN"]
 
 Write-Host "--- 4. Building and Pushing Image to GCR ---" -ForegroundColor Cyan
 gcloud builds submit --config cloudbuild.yaml .
@@ -56,7 +71,9 @@ Write-Host "--- 5. Deploying to Cloud Run ---" -ForegroundColor Cyan
 $ENV_FILE = "env.yaml"
 $ENV_CONTENT = @"
 FIREBASE_CREDENTIALS: |
-$INDENTED_JSON
+  $FIREBASE_CREDENTIALS
+GEMINI_API_KEY: "$GEMINI_API_KEY"
+INFLUXDB_TOKEN: "$INFLUXDB_TOKEN"
 GCP_PROJECT_ID: "$PROJECT_ID"
 GCP_LOCATION: "global"
 FIREBASE_TARGET_UID: "ZLwjf4x1vBPkcEHc015OhelwwHo1"
