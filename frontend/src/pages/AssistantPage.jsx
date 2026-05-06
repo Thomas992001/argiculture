@@ -33,18 +33,174 @@ import {
 } from "lucide-react";
 import { api } from "../api/client";
 import { AiInsightPanel } from "../components/AiInsightCards";
+import { auth, db } from "../firebase";
+import { doc, setDoc } from "firebase/firestore";
 
 const LANGUAGES = [
-  { code: "en-US", label: "English", ttsLang: "en-US" },
-  { code: "ms-MY", label: "Bahasa Melayu", ttsLang: "ms-MY" },
-  { code: "zh-CN", label: "中文", ttsLang: "zh-CN" },
-  { code: "ta-IN", label: "தமிழ்", ttsLang: "ta-IN" },
+  { 
+    code: "en", label: "English", ttsLang: "en-US", sttLang: "en-US", confirm: "Confirm", reject: "Reject", cancelled: "❌ Action cancelled by user.",
+    ui: {
+      title: "AI Assistant",
+      subtitle: "Powered by Google Gemini — real AI with live greenhouse sensor data",
+      welcomeTitle: "GreenMind AI",
+      welcomeDesc: "I'm a real AI that analyzes your greenhouse sensors in real-time. Ask me anything — I'll give you data-driven, expert advice.",
+      inputPlaceholder: "Ask GreenMind anything...",
+      listening: "Listening...",
+      thinking: "Gemini is thinking...",
+      toolsTitle: "AI Power Tools",
+      insightsTitle: "Quick Insights",
+      helloTwinBtn: "👋 Hello Twin",
+      clearChatTitle: "Clear conversation",
+      reportText: "Generate a daily greenhouse report",
+      scheduleText: "Create a smart 24-hour automation schedule",
+      quickActions: [
+        { label: "👋 Hello Twin", isHelloTwin: true },
+        { label: "How is my greenhouse?" },
+        { label: "Any problems?" },
+        { label: "Should I water now?" },
+        { label: "Explain VPD to me" },
+        { label: "Temperature analysis" },
+        { label: "Check pH and EC" },
+        { label: "What crops suit my setup?" },
+      ],
+      aiTools: [
+        { id: "hellotwin", label: "Hello Twin", description: "Proactive AI greeting with full status analysis" },
+        { id: "report", label: "Daily Report", description: "Generate a full AI-powered greenhouse analysis report" },
+        { id: "schedule", label: "Smart Schedule", description: "AI-optimized 24-hour automation schedule" },
+        { id: "whatif", label: "What-If Scenario", description: "Simulate changes before making them" },
+        { id: "growplan", label: "Grow Plan", description: "Week-by-week growing plan for any crop" },
+        { id: "diagnose", label: "Plant Doctor", description: "Upload a photo to diagnose plant health" },
+        { id: "learn", label: "Learn", description: "Beginner-friendly topic explanations" },
+      ],
+      errFail: "Sorry, Hello Twin failed. Please check if the backend is running.",
+      errSomething: "Sorry, something went wrong. Please check if the backend is running."
+    }
+  },
+  { 
+    code: "ms", label: "Bahasa Melayu", ttsLang: "ms-MY", sttLang: "ms-MY", confirm: "Sahkan", reject: "Tolak", cancelled: "❌ Tindakan dibatalkan.",
+    ui: {
+      title: "Pembantu AI",
+      subtitle: "Dikuasakan oleh Google Gemini — AI sebenar dengan penderia langsung",
+      welcomeTitle: "GreenMind AI",
+      welcomeDesc: "Saya AI sebenar yang menganalisis penderia rumah hijau anda secara langsung. Tanya saya apa-apa — saya akan beri nasihat pakar berdasarkan data.",
+      inputPlaceholder: "Tanya GreenMind apa-apa...",
+      listening: "Mendengar...",
+      thinking: "Gemini sedang berfikir...",
+      toolsTitle: "Alat Kuasa AI",
+      insightsTitle: "Wawasan Pantas",
+      helloTwinBtn: "👋 Hai Kembar",
+      clearChatTitle: "Padam perbualan",
+      reportText: "Jana laporan harian rumah hijau",
+      scheduleText: "Buat jadual automasi 24 jam pintar",
+      quickActions: [
+        { label: "👋 Hai Kembar", isHelloTwin: true },
+        { label: "Bagaimana keadaan rumah hijau?" },
+        { label: "Ada masalah?" },
+        { label: "Patutkah saya siram sekarang?" },
+        { label: "Terangkan VPD" },
+        { label: "Analisis suhu" },
+        { label: "Periksa pH dan EC" },
+        { label: "Tanaman apa yang sesuai?" },
+      ],
+      aiTools: [
+        { id: "hellotwin", label: "Hai Kembar", description: "Ucapan AI proaktif dengan analisis status penuh" },
+        { id: "report", label: "Laporan Harian", description: "Jana laporan analisis rumah hijau penuh AI" },
+        { id: "schedule", label: "Jadual Pintar", description: "Jadual automasi 24-jam dioptimumkan AI" },
+        { id: "whatif", label: "Senario Jika", description: "Simulasi perubahan sebelum melakukannya" },
+        { id: "growplan", label: "Pelan Tumbesaran", description: "Pelan tanaman mingguan untuk mana-mana tanaman" },
+        { id: "diagnose", label: "Doktor Tumbuhan", description: "Muat naik foto untuk diagnosis kesihatan tumbuhan" },
+        { id: "learn", label: "Belajar", description: "Penerangan topik mesra pemula" },
+      ],
+      errFail: "Maaf, Hello Twin gagal. Sila periksa bahagian belakang.",
+      errSomething: "Maaf, sesuatu tidak kena. Sila periksa bahagian belakang."
+    }
+  },
+  { 
+    code: "zh", label: "中文", ttsLang: "zh-CN", sttLang: "zh-CN", confirm: "确认", reject: "拒绝", cancelled: "❌ 操作已取消",
+    ui: {
+      title: "AI 助手",
+      subtitle: "由 Google Gemini 驱动 — 结合温室实时数据的真 AI",
+      welcomeTitle: "GreenMind AI",
+      welcomeDesc: "我是实时分析温室数据的真 AI。随便问我，我将为你提供由数据驱动的专业建议。",
+      inputPlaceholder: "向 GreenMind 提问...",
+      listening: "正在聆听...",
+      thinking: "Gemini 思考中...",
+      toolsTitle: "AI 工具箱",
+      insightsTitle: "快速洞察",
+      helloTwinBtn: "👋 小双同学",
+      clearChatTitle: "清除对话",
+      reportText: "生成每日温室分析报告",
+      scheduleText: "创建智能24小时自动化计划",
+      quickActions: [
+        { label: "👋 小双同学", isHelloTwin: true },
+        { label: "温室现在怎么样？" },
+        { label: "有没有问题？" },
+        { label: "现在需要浇水吗？" },
+        { label: "为我解释 VPD" },
+        { label: "温度分析" },
+        { label: "检查 pH 和 EC" },
+        { label: "哪些作物适合我？" },
+      ],
+      aiTools: [
+        { id: "hellotwin", label: "小双同学", description: "主动播报温室所有状态与分析" },
+        { id: "report", label: "每日报告", description: "生成由AI驱动的温室全面分析报告" },
+        { id: "schedule", label: "智能计划", description: "AI优化的24小时自动化计划" },
+        { id: "whatif", label: "假设场景", description: "在执行操作前模拟更改结果" },
+        { id: "growplan", label: "种植计划", description: "为任何作物生成每周种植计划" },
+        { id: "diagnose", label: "植物医生", description: "上传照片诊断植物健康状况" },
+        { id: "learn", label: "学习", description: "新手友好的种植主题讲解" },
+      ],
+      errFail: "抱歉，“小双同学”唤醒失败，请检查后端是否运行。",
+      errSomething: "抱歉，出错了。请检查后端是否运行。"
+    }
+  },
+  { 
+    code: "ta", label: "தமிழ்", ttsLang: "ta-IN", sttLang: "en-IN", confirm: "உறுதி செய்", reject: "நிராகரி", cancelled: "❌ செயல் ரத்து செய்யப்பட்டது",
+    ui: {
+      title: "AI உதவியாளர்",
+      subtitle: "Google Gemini மூலம் இயக்கப்படுகிறது — நேரடி சென்சார் தரவுடன்",
+      welcomeTitle: "GreenMind AI",
+      welcomeDesc: "நான் உங்கள் பசுமை இல்ல சென்சார்களை நிகழ்நேரத்தில் பகுப்பாய்வு செய்யும் AI. எதை வேண்டுமானாலும் கேளுங்கள்.",
+      inputPlaceholder: "GreenMind-யிடம் ஏதேனும் கேளுங்கள்...",
+      listening: "கேட்கிறது...",
+      thinking: "Gemini சிந்திக்கிறது...",
+      toolsTitle: "AI கருவிகள்",
+      insightsTitle: "விரைவான நுண்ணறிவுகள்",
+      helloTwinBtn: "👋 ஹலோ ட்வின்",
+      clearChatTitle: "உரையாடலை அழி",
+      reportText: "தினசரி பசுமை இல்ல அறிக்கையை உருவாக்கு",
+      scheduleText: "24 மணிநேர தானியங்கி அட்டவணையை உருவாக்கு",
+      quickActions: [
+        { label: "👋 ஹலோ ட்வின்", isHelloTwin: true },
+        { label: "என் பசுமை இல்லம் எப்படி உள்ளது?" },
+        { label: "ஏதேனும் பிரச்சனைகள் உள்ளதா?" },
+        { label: "நான் இப்போது தண்ணீர் ஊற்ற வேண்டுமா?" },
+        { label: "VPD பற்றி விளக்குங்கள்" },
+        { label: "வெப்பநிலை பகுப்பாய்வு" },
+        { label: "pH மற்றும் EC ஐ சரிபார்க்கவும்" },
+        { label: "எந்த பயிர்கள் பொருத்தமானவை?" },
+      ],
+      aiTools: [
+        { id: "hellotwin", label: "ஹலோ ட்வின்", description: "முழு நிலை பகுப்பாய்வுடன் AI வாழ்த்து" },
+        { id: "report", label: "தினசரி அறிக்கை", description: "முழு AI-ஆல் உருவாக்கப்பட்ட பகுப்பாய்வு அறிக்கை" },
+        { id: "schedule", label: "ஸ்மார்ட் அட்டவணை", description: "AI-ஆல் உகந்த 24-மணிநேர அட்டவணை" },
+        { id: "whatif", label: "என்ன நடக்கும்? (What-If)", description: "மாற்றங்களைச் செய்வதற்கு முன் உருவகப்படுத்தவும்" },
+        { id: "growplan", label: "வளர்ப்பு திட்டம்", description: "எந்தவொரு பயிருக்கும் வாராந்திர வளர்ப்பு திட்டம்" },
+        { id: "diagnose", label: "தாவர மருத்துவர்", description: "தாவர ஆரோக்கியத்தைக் கண்டறிய புகைப்படத்தைப் பதிவேற்றவும்" },
+        { id: "learn", label: "அறிந்து கொள்", description: "தொடக்கநிலையாளர்களுக்கான விளக்கங்கள்" },
+      ],
+      errFail: "மன்னிக்கவும், Hello Twin தோல்வியடைந்தது. பின்தளம் இயங்குகிறதா என சரிபார்க்கவும்.",
+      errSomething: "மன்னிக்கவும், பிழை ஏற்பட்டுள்ளது. பின்தளம் இயங்குகிறதா என சரிபார்க்கவும்."
+    }
+  },
 ];
 
-const HELLO_TWIN_TRIGGERS = [
-  "hello twin", "hi twin", "hey twin", "halo twin",
-  "你好孪生", "你好双胞", "嗨孪生",
-];
+const WAKE_WORDS_MAP = {
+  en: ["hello twin", "hi twin", "hey twin", "halo twin", "hey twins", "hello twins", "hi, twins", "twins"],
+  zh: ["小双同学", "你好小双", "嗨小双", "嘿小双"],
+  ms: ["hai maya", "hello maya", "maya", "hai si kembar", "hello si kembar", "si kembar"],
+  ta: ["hello twin", "hi twin", "hey twin", "halo twin", "hey twins", "hello twins", "twins"],
+};
 
 const QUICK_ACTIONS = [
   { label: "👋 Hello Twin", icon: Hand, color: "text-amber-400", isHelloTwin: true },
@@ -117,9 +273,10 @@ export default function AssistantPage() {
   const [toolInput, setToolInput] = useState("");
   const [selectedCrop, setSelectedCrop] = useState("lettuce");
   const [imageFile, setImageFile] = useState(null);
-  const [voiceLang, setVoiceLang] = useState("en-US");
+  const [voiceLang, setVoiceLang] = useState(() => localStorage.getItem("twin_lang") || "en");
   const [isListening, setIsListening] = useState(false);
   const [ttsEnabled, setTtsEnabled] = useState(true);
+  const ttsEnabledRef = useRef(true);
   const [showLangMenu, setShowLangMenu] = useState(false);
   const [confirming, setConfirming] = useState(false);
   const scrollRef = useRef(null);
@@ -127,18 +284,49 @@ export default function AssistantPage() {
   const fileInputRef = useRef(null);
   const recognitionRef = useRef(null);
 
+  const toggleTts = () => {
+    const next = !ttsEnabled;
+    setTtsEnabled(next);
+    ttsEnabledRef.current = next;
+    if (typeof window !== "undefined" && "speechSynthesis" in window) {
+      if (!next) {
+        window.speechSynthesis.pause();
+      } else {
+        if (window.speechSynthesis.paused) {
+          window.speechSynthesis.resume();
+        } else {
+          window.speechSynthesis.speak(new SpeechSynthesisUtterance(""));
+        }
+      }
+    }
+  };
+
   const speechSupported = typeof window !== "undefined" && ("SpeechRecognition" in window || "webkitSpeechRecognition" in window);
 
   useEffect(() => {
     api.getAdvisorStatus().then(setGeminiStatus).catch(() => {});
     api.getVpdInfo().then(setVpd).catch(() => {});
     api.getCropProfiles().then(setCrops).catch(() => {});
+
+    const handleLangChange = () => {
+      const stored = localStorage.getItem("twin_lang");
+      if (stored) setVoiceLang(stored);
+    };
+    window.addEventListener("twin_lang_changed", handleLangChange);
+    return () => {
+      window.removeEventListener("twin_lang_changed", handleLangChange);
+      try { window.speechSynthesis?.cancel(); } catch {}
+    };
   }, []);
 
   const speakText = useCallback((text) => {
-    if (!ttsEnabled || !window.speechSynthesis) return;
+    if (!text || !window.speechSynthesis) return;
     window.speechSynthesis.cancel();
-    const plain = text
+    if (!ttsEnabledRef.current) return;
+    const u = new SpeechSynthesisUtterance(text);
+    const selected = LANGUAGES.find((l) => l.code === voiceLang);
+    u.lang = selected ? selected.ttsLang : "en-US";
+    const plain = String(text)
       .replace(/\*\*(.+?)\*\*/g, "$1")
       .replace(/\*(.+?)\*/g, "$1")
       .replace(/`(.+?)`/g, "$1")
@@ -148,44 +336,47 @@ export default function AssistantPage() {
     const maxLen = 500;
     const chunk = plain.length > maxLen ? plain.slice(0, maxLen) + "..." : plain;
     const utterance = new SpeechSynthesisUtterance(chunk);
-    utterance.lang = voiceLang;
+    utterance.lang = u.lang;
     utterance.rate = 1.0;
     utterance.pitch = 1.0;
     window.speechSynthesis.speak(utterance);
-  }, [ttsEnabled, voiceLang]);
+  }, [voiceLang]);
 
   const startListening = useCallback(() => {
     if (!speechSupported) return;
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-    const recognition = new SpeechRecognition();
-    recognition.lang = voiceLang;
-    recognition.interimResults = false;
-    recognition.continuous = false;
+    if (!SpeechRecognition) return;
 
-    recognition.onstart = () => setIsListening(true);
-    recognition.onresult = (event) => {
+    const recog = new SpeechRecognition();
+    const selected = LANGUAGES.find((l) => l.code === voiceLang);
+    recog.lang = selected ? selected.sttLang : "en-US";
+    recog.continuous = false;
+
+    recog.onstart = () => setIsListening(true);
+    recog.onresult = (event) => {
       const transcript = event.results[0]?.[0]?.transcript?.trim();
       if (transcript) {
-        setInput(transcript);
-        setIsListening(false);
         const lower = transcript.toLowerCase();
-        if (HELLO_TWIN_TRIGGERS.some((t) => lower.includes(t))) {
-          triggerHelloTwin();
+        const activeLang = voiceLang || "en";
+        const triggers = WAKE_WORDS_MAP[activeLang] || WAKE_WORDS_MAP.en;
+        
+        if (triggers.some((t) => lower.includes(t))) {
+          handleHelloTwin(activeLang);
         } else {
-          sendMessage(transcript);
+          setInput(transcript);
+          handleSend(transcript);
         }
-        setInput("");
       }
     };
-    recognition.onerror = (event) => {
+    recog.onerror = (event) => {
       console.warn("Speech recognition error:", event.error);
       setIsListening(false);
     };
-    recognition.onend = () => setIsListening(false);
+    recog.onend = () => setIsListening(false);
 
-    recognitionRef.current = recognition;
+    recognitionRef.current = recog;
     try {
-      recognition.start();
+      recog.start();
     } catch (e) {
       setIsListening(false);
     }
@@ -207,39 +398,49 @@ export default function AssistantPage() {
     speakText(text);
   }, [speakText]);
 
-  const triggerHelloTwin = async () => {
-    setMessages((prev) => [...prev, { id: Date.now(), text: "👋 Hello Twin", isUser: true }]);
+  const handleHelloTwin = async (langOverride = null) => {
+    try { window.speechSynthesis?.cancel(); } catch {}
     setLoading(true);
+    setInput("");
     try {
-      const response = await api.helloTwin();
+      const activeLang = langOverride || voiceLang || "en";
+      const response = await api.helloTwin(activeLang);
       addBotMessage(response.answer, {
         model: response.model, powered_by: response.powered_by,
         intent: response.intent, actions_taken: response.actions_taken,
         actions_proposed: response.actions_proposed, action_id: response.action_id,
       });
     } catch {
-      addBotMessage("Sorry, Hello Twin failed. Please check if the backend is running.");
+      const selected = LANGUAGES.find((l) => l.code === (langOverride || voiceLang || "en")) || LANGUAGES[0];
+      addBotMessage(selected.ui.errFail);
     } finally {
       setLoading(false);
     }
   };
 
-  const sendMessage = async (text) => {
+  const handleSend = async (textOverride) => {
+    const text = typeof textOverride === "string" ? textOverride : input;
+    if (!text.trim() && !imageFile) return;
+    try { window.speechSynthesis?.cancel(); } catch {}
+
     const lower = text.toLowerCase().trim();
-    if (HELLO_TWIN_TRIGGERS.some((t) => lower.includes(t))) {
-      return triggerHelloTwin();
+    const triggers = WAKE_WORDS_MAP[voiceLang] || WAKE_WORDS_MAP.en;
+    if (triggers.some((t) => lower === t || lower.includes(t))) {
+      return handleHelloTwin(voiceLang);
     }
     setMessages((prev) => [...prev, { id: Date.now(), text, isUser: true }]);
     setLoading(true);
     try {
-      const response = await api.agentChat(text, "default", voiceLang);
+      const activeLang = voiceLang || "en";
+      const response = await api.agentChat(text, "default", activeLang);
       addBotMessage(response.answer, {
         model: response.model, powered_by: response.powered_by,
         intent: response.intent, actions_taken: response.actions_taken,
         actions_proposed: response.actions_proposed, action_id: response.action_id,
       });
     } catch {
-      addBotMessage("Sorry, something went wrong. Please check if the backend is running.");
+      const selected = LANGUAGES.find((l) => l.code === (voiceLang || "en")) || LANGUAGES[0];
+      addBotMessage(selected.ui.errSomething);
     } finally {
       setLoading(false);
     }
@@ -248,7 +449,7 @@ export default function AssistantPage() {
   const handleConfirmAction = async (actionId) => {
     setConfirming(true);
     try {
-      const response = await api.confirmAction(actionId);
+      const response = await api.confirmAction(actionId, voiceLang);
       setMessages((prev) => {
         const updated = prev.map((msg) =>
           msg.action_id === actionId ? { ...msg, actions_proposed: [], action_id: null } : msg
@@ -267,12 +468,13 @@ export default function AssistantPage() {
   };
 
   const handleRejectAction = (actionId) => {
+    const activeLang = LANGUAGES.find((l) => l.code === voiceLang) || LANGUAGES[0];
     setMessages((prev) => {
       const updated = prev.map((msg) =>
         msg.action_id === actionId ? { ...msg, actions_proposed: [], action_id: null } : msg
       );
       return [...updated, {
-        id: Date.now() + Math.random(), text: "❌ Action cancelled by user.", isUser: false, intent: "cancelled",
+        id: Date.now() + Math.random(), text: activeLang.cancelled, isUser: false, intent: "cancelled",
       }];
     });
   };
@@ -282,7 +484,7 @@ export default function AssistantPage() {
     const trimmed = input.trim();
     if (!trimmed || loading) return;
     setInput("");
-    sendMessage(trimmed);
+    handleSend(trimmed);
   };
 
   const runTool = async (toolId) => {
@@ -291,16 +493,16 @@ export default function AssistantPage() {
       let result;
       switch (toolId) {
         case "hellotwin":
-          await triggerHelloTwin();
+          await handleHelloTwin();
           setLoading(false);
           return;
         case "report":
-          setMessages((prev) => [...prev, { id: Date.now(), text: "Generate a daily greenhouse report", isUser: true }]);
+          setMessages((prev) => [...prev, { id: Date.now(), text: (LANGUAGES.find((l) => l.code === voiceLang) || LANGUAGES[0]).ui.reportText, isUser: true }]);
           result = await api.getDailyReport();
           addBotMessage(result.report, { powered_by: result.powered_by });
           break;
         case "schedule":
-          setMessages((prev) => [...prev, { id: Date.now(), text: "Create a smart 24-hour automation schedule", isUser: true }]);
+          setMessages((prev) => [...prev, { id: Date.now(), text: (LANGUAGES.find((l) => l.code === voiceLang) || LANGUAGES[0]).ui.scheduleText, isUser: true }]);
           result = await api.getAutomationSchedule();
           addBotMessage(result.schedule, { powered_by: result.powered_by });
           break;
@@ -360,6 +562,9 @@ export default function AssistantPage() {
 
   const geminiOk = geminiStatus?.gemini_available;
 
+  const currentLangObj = LANGUAGES.find((l) => l.code === voiceLang) || LANGUAGES[0];
+  const ui = currentLangObj.ui;
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -367,10 +572,10 @@ export default function AssistantPage() {
         <div>
           <h2 className="text-2xl font-bold text-white flex items-center gap-2">
             <Bot size={28} className="text-greenhouse-400" />
-            AI Assistant
+            {ui.title}
           </h2>
           <p className="text-sm text-gray-500 mt-1">
-            Powered by Google Gemini — real AI with live greenhouse sensor data
+            {ui.subtitle}
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -385,7 +590,15 @@ export default function AssistantPage() {
               <div className="absolute right-0 top-full mt-1 z-50 bg-gray-800 border border-gray-700 rounded-lg shadow-xl py-1 min-w-[140px]">
                 {LANGUAGES.map((lang) => (
                   <button key={lang.code}
-                    onClick={() => { setVoiceLang(lang.code); setShowLangMenu(false); }}
+                    onClick={() => { 
+                      setVoiceLang(lang.code);
+                      localStorage.setItem("twin_lang", lang.code);
+                      if (auth.currentUser) {
+                        setDoc(doc(db, "users", auth.currentUser.uid), { twin_lang: lang.code }, { merge: true });
+                      }
+                      window.dispatchEvent(new Event("twin_lang_changed"));
+                      setShowLangMenu(false); 
+                    }}
                     className={`w-full text-left px-3 py-1.5 text-xs hover:bg-gray-700 transition-colors ${
                       voiceLang === lang.code ? "text-greenhouse-400 font-medium" : "text-gray-300"
                     }`}>
@@ -397,7 +610,7 @@ export default function AssistantPage() {
           </div>
 
           {/* TTS toggle */}
-          <button onClick={() => { setTtsEnabled(!ttsEnabled); window.speechSynthesis?.cancel(); }}
+          <button onClick={toggleTts}
             title={ttsEnabled ? "Mute voice output" : "Enable voice output"}
             className={`p-1.5 rounded-lg transition-colors ${
               ttsEnabled ? "text-greenhouse-400 hover:bg-greenhouse-500/10" : "text-gray-500 hover:bg-gray-800"
@@ -439,22 +652,25 @@ export default function AssistantPage() {
                 <div className="w-16 h-16 rounded-full bg-gradient-to-br from-greenhouse-500/30 to-blue-500/20 flex items-center justify-center mb-4">
                   <Sparkles size={28} className="text-greenhouse-400" />
                 </div>
-                <h3 className="text-lg font-semibold text-white mb-1">GreenMind AI</h3>
+                <h3 className="text-lg font-semibold text-white mb-1">{ui.welcomeTitle}</h3>
                 <p className="text-sm text-gray-500 max-w-md mb-6">
-                  I'm a real AI that analyzes your greenhouse sensors in real-time. Ask me anything — I'll give you data-driven, expert advice.
+                  {ui.welcomeDesc}
                 </p>
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-2 max-w-2xl">
-                  {QUICK_ACTIONS.map((q) => (
-                    <button key={q.label} onClick={() => q.isHelloTwin ? triggerHelloTwin() : sendMessage(q.label)}
-                      className={`flex items-center gap-2 px-3 py-2.5 rounded-lg border text-xs transition-all text-left ${
-                        q.isHelloTwin
-                          ? "bg-gradient-to-r from-amber-500/20 to-orange-500/20 border-amber-500/40 text-amber-400 hover:from-amber-500/30 hover:to-orange-500/30 font-medium"
-                          : "bg-gray-800 border-gray-700 text-gray-400 hover:text-white hover:border-greenhouse-600/40"
-                      }`}>
-                      <q.icon size={14} className={`${q.color} shrink-0`} />
-                      <span>{q.label}</span>
-                    </button>
-                  ))}
+                  {QUICK_ACTIONS.map((q, i) => {
+                    const tLabel = ui.quickActions?.[i]?.label || q.label;
+                    return (
+                      <button key={i} onClick={() => q.isHelloTwin ? handleHelloTwin() : handleSend(tLabel)}
+                        className={`flex items-center gap-2 px-3 py-2.5 rounded-lg border text-xs transition-all text-left ${
+                          q.isHelloTwin
+                            ? "bg-gradient-to-r from-amber-500/20 to-orange-500/20 border-amber-500/40 text-amber-400 hover:from-amber-500/30 hover:to-orange-500/30 font-medium"
+                            : "bg-gray-800 border-gray-700 text-gray-400 hover:text-white hover:border-greenhouse-600/40"
+                        }`}>
+                        <q.icon size={14} className={`${q.color} shrink-0`} />
+                        <span>{tLabel}</span>
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
             )}
@@ -507,11 +723,11 @@ export default function AssistantPage() {
                           <div className="flex gap-2">
                             <button onClick={() => handleConfirmAction(msg.action_id)} disabled={confirming}
                               className="flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg bg-green-600 hover:bg-green-500 disabled:bg-gray-700 text-white text-xs font-medium transition-colors">
-                              {confirming ? <Loader2 size={12} className="animate-spin" /> : <CheckCircle size={12} />} Confirm
+                              {confirming ? <Loader2 size={12} className="animate-spin" /> : <CheckCircle size={12} />} {LANGUAGES.find((l) => l.code === voiceLang)?.confirm || "Confirm"}
                             </button>
                             <button onClick={() => handleRejectAction(msg.action_id)} disabled={confirming}
                               className="flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg bg-gray-700 hover:bg-gray-600 disabled:bg-gray-800 text-gray-300 text-xs font-medium transition-colors">
-                              <XCircle size={12} /> Reject
+                              <XCircle size={12} /> {LANGUAGES.find((l) => l.code === voiceLang)?.reject || "Reject"}
                             </button>
                           </div>
                         </div>
@@ -539,7 +755,7 @@ export default function AssistantPage() {
                 <div className="bg-gray-800/70 border border-gray-700/50 rounded-xl px-4 py-3">
                   <div className="flex items-center gap-2">
                     <Loader2 size={14} className="animate-spin text-greenhouse-400" />
-                    <span className="text-xs text-gray-500">Gemini is thinking...</span>
+                    <span className="text-xs text-gray-500">{ui.thinking}</span>
                   </div>
                 </div>
               </div>
@@ -616,7 +832,7 @@ export default function AssistantPage() {
               </button>
             )}
             <input ref={inputRef} type="text" value={input} onChange={(e) => setInput(e.target.value)}
-              placeholder={isListening ? "Listening..." : "Ask GreenMind anything..."}
+              placeholder={isListening ? ui.listening : ui.inputPlaceholder}
               className="flex-1 bg-gray-800 border border-gray-700 rounded-xl px-4 py-2.5 text-sm text-gray-200 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-greenhouse-500/50"
               disabled={loading} />
             <button type="submit" disabled={!input.trim() || loading}
@@ -624,7 +840,7 @@ export default function AssistantPage() {
               <Send size={16} />
             </button>
             {messages.length > 0 && (
-              <button type="button" onClick={clearChat} title="Clear conversation"
+              <button type="button" onClick={clearChat} title={ui.clearChatTitle}
                 className="px-3 py-2.5 rounded-xl bg-gray-800 hover:bg-gray-700 text-gray-500 hover:text-gray-300 transition-colors">
                 <Trash2 size={16} />
               </button>
@@ -638,10 +854,12 @@ export default function AssistantPage() {
           <div className="bg-gray-900/50 rounded-xl border border-gray-800 p-4">
             <h3 className="text-sm font-semibold text-white mb-3 flex items-center gap-2">
               <Zap size={14} className="text-greenhouse-400" />
-              AI Power Tools
+              {ui.toolsTitle}
             </h3>
             <div className="space-y-2">
-              {AI_TOOLS.map((tool) => (
+              {AI_TOOLS.map((tool) => {
+                const tInfo = ui.aiTools?.find((t) => t.id === tool.id) || tool;
+                return (
                 <button key={tool.id}
                   onClick={() => {
                     if (tool.id === "report" || tool.id === "schedule" || tool.id === "hellotwin") { runTool(tool.id); }
@@ -656,12 +874,13 @@ export default function AssistantPage() {
                   <div className="flex items-center gap-2.5">
                     <tool.icon size={16} className={tool.color} />
                     <div>
-                      <p className="text-xs font-medium text-gray-200">{tool.label}</p>
-                      <p className="text-[10px] text-gray-500">{tool.description}</p>
+                      <p className="text-xs font-medium text-gray-200">{tInfo.label}</p>
+                      <p className="text-[10px] text-gray-500">{tInfo.description}</p>
                     </div>
                   </div>
                 </button>
-              ))}
+                );
+              })}
             </div>
           </div>
 
@@ -681,7 +900,7 @@ export default function AssistantPage() {
           {/* AI Insights (rule-based, fast) */}
           <div className="bg-gray-900/50 rounded-xl border border-gray-800 p-4">
             <h3 className="text-sm font-medium text-gray-400 mb-3 flex items-center gap-2">
-              <Sparkles size={14} className="text-greenhouse-400" /> Quick Insights
+              <Sparkles size={14} className="text-greenhouse-400" /> {ui.insightsTitle}
             </h3>
             <AiInsightPanel maxItems={5} compact />
           </div>

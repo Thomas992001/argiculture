@@ -11,8 +11,7 @@ from backend.models import (
     Zone, ZoneType, Actuator, ActuatorState, ActuatorCommand,
     GreenhouseState, SensorReading, Alert, AlertSeverity, get_now,
 )
-from backend.firebase_admin_config import db_fs
-
+from backend.firebase_admin_config import root_ref
 
 class TwinStateManager:
     """Keeps a live in-memory model of the entire greenhouse."""
@@ -31,31 +30,40 @@ class TwinStateManager:
         self._initialize_actuators()
 
     def start_control_listener(self, uid: str):
-        """Listen to control signals from Firestore to trigger actuators."""
-        if not db_fs:
+        """Listen to control signals from RTDB to trigger actuators."""
+        if not root_ref:
             return
         
         self.current_uid = uid
 
-        if self._firestore_watch:
-            self._firestore_watch.unsubscribe()
+        if getattr(self, "_rtdb_listener", None):
+            try:
+                self._rtdb_listener.close()
+            except Exception:
+                pass
 
-        doc_ref = db_fs.collection("users").document(uid).collection("control").document("latest")
+        def on_data_change(event):
+            if event.data is None:
+                return
+            
+            print(f"DEBUG: Cloud Control Signal Received via RTDB: {event.path} -> {event.data}")
+            
+            data = {}
+            if event.path == "/":
+                if isinstance(event.data, dict):
+                    data = event.data
+            else:
+                key = event.path.lstrip("/")
+                data = {key: event.data}
 
-        def on_snapshot(doc_snapshot, changes, read_time):
-            for doc in doc_snapshot:
-                data = doc.to_dict()
-                if not data:
-                    continue
-                
-                print(f"DEBUG: Cloud Control Signal Received: {data}")
-                for aid, state_bool in data.items():
-                    if aid in self._actuators:
-                        cmd = ActuatorState.ON if state_bool else ActuatorState.OFF
-                        self.set_actuator(ActuatorCommand(actuator_id=aid, command=cmd))
+            for aid, state_bool in data.items():
+                if aid in self._actuators:
+                    cmd = ActuatorState.ON if state_bool else ActuatorState.OFF
+                    self.set_actuator(ActuatorCommand(actuator_id=aid, command=cmd))
 
-        self._firestore_watch = doc_ref.on_snapshot(on_snapshot)
-        print(f"DEBUG: Firestore Listener started for {doc_ref.path}")
+        path = f"users/{uid}/live/sensors"
+        self._rtdb_listener = root_ref.child(path).listen(on_data_change)
+        print(f"DEBUG: RTDB Listener started for control at {path}")
 
     def bind_actuator_sink(self, sink: Callable[[str, ActuatorState], None]):
         """Notify simulator (or hardware) whenever a pump actuator changes."""
@@ -115,10 +123,13 @@ class TwinStateManager:
                     zone.current_readings[r.sensor_type.value] = r.value
 
     def set_actuator(self, command: ActuatorCommand) -> Optional[Actuator]:
+        state_changed = False
         with self._lock:
             actuator = self._actuators.get(command.actuator_id)
             if not actuator:
                 return None
+            if actuator.state != command.command:
+                state_changed = True
             actuator.state = command.command
             actuator.current_value = command.value or (1.0 if command.command == ActuatorState.ON else 0.0)
             actuator.last_changed = get_now()
@@ -132,23 +143,23 @@ class TwinStateManager:
             except Exception as e:
                 print(f"[TwinState] Actuator sink error: {e}")
         
-        # NEW: Sync to Firestore so the UI (ControlPage) reflects this change
-        self._sync_actuator_to_cloud(aid, state)
+        if state_changed:
+            # Sync to RTDB so the UI (ControlPage) reflects this change
+            self._sync_actuator_to_cloud(aid, state)
         
         return result
 
     def _sync_actuator_to_cloud(self, aid: str, state: ActuatorState):
-        """Push a single actuator state change to Firestore."""
-        if not db_fs or not self.current_uid:
+        """Push a single actuator state change to RTDB."""
+        if not root_ref or not self.current_uid:
             return
         
         def _task():
             try:
                 uid = self.current_uid
-                doc_ref = db_fs.collection("users").document(uid).collection("control").document("latest")
-                # Update only the specific control key (boolean value)
-                doc_ref.update({aid: (state == ActuatorState.ON)})
-                print(f"DEBUG: Synced {aid}={state.value} to Cloud for {uid}")
+                ref = root_ref.child(f"users/{uid}/live/sensors")
+                ref.update({aid: (state == ActuatorState.ON)})
+                print(f"DEBUG: Synced {aid}={state.value} to RTDB for {uid}")
             except Exception as e:
                 print(f"[TwinState] Error syncing {aid} to cloud: {e}")
 
@@ -212,8 +223,8 @@ class TwinStateManager:
             return [a for a in self._alerts if not a.acknowledged][-50:]
 
     def push_actuators_to_cloud(self, uid: str):
-        """Push the current in-memory state of all actuators to Firestore for initialization."""
-        if not db_fs:
+        """Push the current in-memory state of all actuators to RTDB for initialization."""
+        if not root_ref:
             return
         
         with self._lock:
@@ -225,9 +236,9 @@ class TwinStateManager:
             
         def _task():
             try:
-                doc_ref = db_fs.collection("users").document(uid).collection("control").document("latest")
-                doc_ref.set(states, merge=True)
-                print(f"DEBUG: Initialized Firestore control states for {uid}")
+                ref = root_ref.child(f"users/{uid}/live/sensors")
+                ref.update(states)
+                print(f"DEBUG: Initialized RTDB control states for {uid}")
             except Exception as e:
                 print(f"Error syncing actuators to cloud: {e}")
 
@@ -235,18 +246,17 @@ class TwinStateManager:
 
     def pull_actuators_from_cloud(self, uid: str):
         """Fetch the current cloud state and apply it to local actuators."""
-        if not db_fs:
+        if not root_ref:
             return
         
         self.current_uid = uid
             
         def _task():
             try:
-                doc_ref = db_fs.collection("users").document(uid).collection("control").document("latest")
-                doc = doc_ref.get()
-                if doc.exists:
-                    data = doc.to_dict()
-                    print(f"DEBUG: Restoring states from Cloud: {data}")
+                ref = root_ref.child(f"users/{uid}/live/sensors")
+                data = ref.get()
+                if data and isinstance(data, dict):
+                    print(f"DEBUG: Restoring states from RTDB: {data}")
                     for aid, state_bool in data.items():
                         if aid in self._actuators:
                             cmd = ActuatorState.ON if state_bool else ActuatorState.OFF

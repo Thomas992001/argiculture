@@ -1,7 +1,8 @@
 import { useState, useEffect, useCallback, useRef } from "react";
-import { Routes, Route, Navigate } from "react-router-dom";
+import { Routes, Route, Navigate, useLocation } from "react-router-dom";
 import { onAuthStateChanged, signOut } from "firebase/auth";
-import { auth } from "./firebase";
+import { doc, getDoc, setDoc } from "firebase/firestore";
+import { auth, db } from "./firebase";
 import { api } from "./api/client";
 import Layout from "./components/Layout";
 import OverviewPage from "./pages/OverviewPage";
@@ -15,13 +16,22 @@ import AiAssistant from "./components/AiAssistant";
 import HeyTwinDialog from "./components/HeyTwinDialog";
 import { AlertsProvider } from "./contexts/AlertsProvider";
 
+const WAKE_WORDS_MAP = {
+  en: ["hello twin", "hi twin", "hey twin", "halo twin", "hey twins", "hello twins", "hi, twins", "twins"],
+  zh: ["小双同学", "你好小双", "嗨小双", "嘿小双"],
+  ms: ["hai maya", "hello maya", "maya", "hai si kembar", "hello si kembar", "si kembar"],
+  ta: ["hello twin", "hi twin", "hey twin", "halo twin", "hey twins", "hello twins", "twins"],
+};
+
 // Wake word phrases to detect in continuous listening
-const WAKE_PHRASES = ["hey twin", "hello twin", "hi twin", "halo twin"];
+const WAKE_PHRASES = Object.values(WAKE_WORDS_MAP).flat();
 
 export default function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const location = useLocation();
   const [loading, setLoading] = useState(true);
   const [heyTwinOpen, setHeyTwinOpen] = useState(false);
+  const [twinLang, setTwinLang] = useState(() => localStorage.getItem("twin_lang"));
   const wakeRecogRef = useRef(null);
 
   useEffect(() => {
@@ -31,6 +41,16 @@ export default function App() {
         api.bindSimulator(user.uid)
           .then(() => console.log("Backend bound to UID:", user.uid))
           .catch(err => console.error("Binding error:", err));
+
+        // Fetch user's preferred language from Firestore
+        getDoc(doc(db, "users", user.uid)).then((docSnap) => {
+          if (docSnap.exists() && docSnap.data().twin_lang) {
+            const lang = docSnap.data().twin_lang;
+            localStorage.setItem("twin_lang", lang);
+            setTwinLang(lang);
+            window.dispatchEvent(new Event("twin_lang_changed"));
+          }
+        });
       }
       setLoading(false);
     });
@@ -49,6 +69,12 @@ export default function App() {
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, []);
 
+  useEffect(() => {
+    const handleLangChange = () => setTwinLang(localStorage.getItem("twin_lang"));
+    window.addEventListener("twin_lang_changed", handleLangChange);
+    return () => window.removeEventListener("twin_lang_changed", handleLangChange);
+  }, []);
+
   // ── Continuous wake word detection (background listening) ──
   // Pauses automatically while HeyTwinDialog is open to avoid mic conflicts.
   useEffect(() => {
@@ -64,7 +90,9 @@ export default function App() {
       if (stopped) return;
       try {
         const recog = new SpeechRecognition();
-        recog.lang = "en-US";
+        const savedLang = twinLang;
+        const localeMap = { en: "en-US", zh: "zh-CN", ms: "ms-MY", ta: "en-IN" }; // ta uses en-IN for wake word
+        recog.lang = (savedLang && localeMap[savedLang]) ? localeMap[savedLang] : (navigator.language || "en-US");
         recog.continuous = true;
         recog.interimResults = true;
 
@@ -74,11 +102,15 @@ export default function App() {
           if (triggered) return;
           for (let i = event.resultIndex; i < event.results.length; i++) {
             const transcript = event.results[i][0]?.transcript?.toLowerCase().trim();
-            if (transcript && WAKE_PHRASES.some((w) => transcript.includes(w))) {
-              triggered = true;
-              setHeyTwinOpen(true);
-              try { recog.stop(); } catch {}
-              return;
+            if (transcript) {
+              const activeLang = twinLang || "en";
+              const triggers = WAKE_WORDS_MAP[activeLang] || WAKE_WORDS_MAP.en;
+              if (triggers.some(t => transcript.includes(t))) {
+                triggered = true;
+                setHeyTwinOpen(true);
+                try { recog.stop(); } catch {}
+                return;
+              }
             }
           }
         };
@@ -108,11 +140,15 @@ export default function App() {
 
     return () => {
       stopped = true;
-      clearTimeout(restartTimer);
-      try { wakeRecogRef.current?.abort(); } catch {}
-      wakeRecogRef.current = null;
+      if (restartTimer) clearTimeout(restartTimer);
+      try {
+        if (wakeRecogRef.current) {
+          wakeRecogRef.current.onend = null;
+          wakeRecogRef.current.stop();
+        }
+      } catch {}
     };
-  }, [isAuthenticated, heyTwinOpen]);
+  }, [isAuthenticated, heyTwinOpen, twinLang]);
 
   const handleLogout = async () => {
     try {
@@ -171,7 +207,7 @@ export default function App() {
 
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
-      {isAuthenticated && <AiAssistant onOpenHeyTwin={openHeyTwin} />}
+      {isAuthenticated && location.pathname !== "/assistant" && <AiAssistant onOpenHeyTwin={openHeyTwin} />}
       {isAuthenticated && (
         <HeyTwinDialog
           isOpen={heyTwinOpen}

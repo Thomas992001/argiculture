@@ -13,6 +13,8 @@ import {
   Leaf,
 } from "lucide-react";
 import { api } from "../api/client";
+import { auth, db } from "../firebase";
+import { doc, setDoc } from "firebase/firestore";
 import "../styles/HeyTwinDialog.css";
 
 // ── Markdown-lite renderer ──
@@ -44,20 +46,105 @@ function MarkdownLite({ text }) {
   );
 }
 
-const QUICK_ACTIONS = [
-  { label: "How's my greenhouse?", icon: Sparkles },
-  { label: "Should I water now?", icon: Lightbulb },
-  { label: "Any problems?", icon: Activity },
-  { label: "What's the VPD?", icon: Leaf },
-];
 
-const HELLO_TWIN_TRIGGERS = [
-  "hello twin", "hi twin", "hey twin", "halo twin",
-  "你好孪生", "嗨孪生",
-];
+
+const WAKE_WORDS_MAP = {
+  en: ["hello twin", "hi twin", "hey twin", "halo twin", "hey twins", "hello twins", "hi, twins", "twins"],
+  zh: ["小双同学", "你好小双", "嗨小双", "嘿小双"],
+  ms: ["hai maya", "hello maya", "maya", "hai si kembar", "hello si kembar", "si kembar"],
+  ta: ["hello twin", "hi twin", "hey twin", "halo twin", "hey twins", "hello twins", "twins"],
+};
+
+const UI_TEXT = {
+  en: {
+    title: "Hey Twin",
+    listening: "Listening...",
+    thinking: "Thinking...",
+    placeholder: "Ask anything or give a command...",
+    confirm: "Confirm",
+    reject: "Reject",
+    cancelled: "❌ Action cancelled by user.",
+    error: "Sorry, something went wrong. Please try again.",
+    connError: "Sorry, I couldn't connect. Please try again.",
+    hintOpen: "to open",
+    hintClose: "to close",
+    hintWake: "🎤 say \"Hey Twin\"",
+    helloTwinBtn: "👋 Hello Twin",
+    quick: [
+      { label: "How's my greenhouse?", icon: Sparkles },
+      { label: "Should I water now?", icon: Lightbulb },
+      { label: "Any problems?", icon: Activity },
+      { label: "What's the VPD?", icon: Leaf },
+    ]
+  },
+  zh: {
+    title: "小双同学",
+    listening: "正在聆听...",
+    thinking: "思考中...",
+    placeholder: "问点什么，或下达指令...",
+    confirm: "确认",
+    reject: "拒绝",
+    cancelled: "❌ 操作已取消",
+    error: "抱歉，处理失败，请重试。",
+    connError: "抱歉，无法连接，请重试。",
+    hintOpen: "打开",
+    hintClose: "关闭",
+    hintWake: "🎤 喊 \"小双同学\"",
+    helloTwinBtn: "👋 小双同学",
+    quick: [
+      { label: "温室现在怎么样？", icon: Sparkles },
+      { label: "现在需要浇水吗？", icon: Lightbulb },
+      { label: "有没有问题？", icon: Activity },
+      { label: "VPD是多少？", icon: Leaf },
+    ]
+  },
+  ms: {
+    title: "Hey Twin",
+    listening: "Sedang mendengar...",
+    thinking: "Sedang berfikir...",
+    placeholder: "Tanya apa-apa...",
+    confirm: "Sahkan",
+    reject: "Tolak",
+    cancelled: "❌ Tindakan dibatalkan.",
+    error: "Maaf, gagal memproses. Sila cuba lagi.",
+    connError: "Maaf, tidak dapat menyambung. Sila cuba lagi.",
+    hintOpen: "untuk buka",
+    hintClose: "untuk tutup",
+    hintWake: "🎤 sebut \"Hey Twin\"",
+    helloTwinBtn: "👋 Hai Kembar",
+    quick: [
+      { label: "Bagaimana rumah hijau saya?", icon: Sparkles },
+      { label: "Patutkah saya siram sekarang?", icon: Lightbulb },
+      { label: "Ada masalah?", icon: Activity },
+      { label: "Berapa VPD?", icon: Leaf },
+    ]
+  },
+  ta: {
+    title: "Hey Twin",
+    listening: "கேட்கிறது...",
+    thinking: "சிந்திக்கிறது...",
+    placeholder: "ஏதேனும் கேளுங்கள்...",
+    confirm: "உறுதி செய்",
+    reject: "நிராகரி",
+    cancelled: "❌ செயல் ரத்து செய்யப்பட்டது",
+    error: "மன்னிக்கவும், செயல்படுத்த முடியவில்லை. மீண்டும் முயற்சிக்கவும்.",
+    connError: "மன்னிக்கவும், இணைக்க முடியவில்லை. மீண்டும் முயற்சிக்கவும்.",
+    hintOpen: "திறக்க",
+    hintClose: "மூட",
+    hintWake: "🎤 \"Hey Twin\" என்று சொல்லுங்கள்",
+    helloTwinBtn: "👋 ஹலோ ட்வின்",
+    quick: [
+      { label: "என் பசுமை இல்லம் எப்படி உள்ளது?", icon: Sparkles },
+      { label: "நான் இப்போது தண்ணீர் ஊற்ற வேண்டுமா?", icon: Lightbulb },
+      { label: "ஏதேனும் பிரச்சனைகள் உள்ளதா?", icon: Activity },
+      { label: "VPD என்றால் என்ன?", icon: Leaf },
+    ]
+  }
+};
+
 
 // ── TTS helper ──
-function speak(text, onEnd) {
+function speak(text, onEnd, langCode = "en-US") {
   if (!("speechSynthesis" in window) || !text) {
     onEnd?.();
     return;
@@ -69,7 +156,7 @@ function speak(text, onEnd) {
       .replace(/\n{2,}/g, ". ")
       .slice(0, 500);
     const utter = new SpeechSynthesisUtterance(clean);
-    utter.lang = "en-US";
+    utter.lang = langCode;
     utter.rate = 1.0;
     if (onEnd) utter.onend = onEnd;
     window.speechSynthesis.speak(utter);
@@ -77,6 +164,14 @@ function speak(text, onEnd) {
     onEnd?.();
   }
 }
+
+// ── iOS Audio Unlock ──
+const unlockAudio = () => {
+  if (typeof window !== "undefined" && "speechSynthesis" in window) {
+    const utterance = new SpeechSynthesisUtterance("");
+    window.speechSynthesis.speak(utterance);
+  }
+};
 
 export default function HeyTwinDialog({ isOpen, onClose }) {
   const [input, setInput] = useState("");
@@ -97,7 +192,9 @@ export default function HeyTwinDialog({ isOpen, onClose }) {
     if (!SR) return null;
 
     const recog = new SR();
-    recog.lang = "en-US";
+    const savedLang = localStorage.getItem("twin_lang");
+    const localeMap = { en: "en-US", zh: "zh-CN", ms: "ms-MY", ta: "en-IN" };
+    recog.lang = (savedLang && localeMap[savedLang]) ? localeMap[savedLang] : (navigator.language || "en-US");
     recog.continuous = false;
     recog.interimResults = false;
 
@@ -105,8 +202,10 @@ export default function HeyTwinDialog({ isOpen, onClose }) {
       const transcript = event.results[0]?.[0]?.transcript?.trim();
       if (transcript) {
         const lower = transcript.toLowerCase();
-        if (HELLO_TWIN_TRIGGERS.some((t) => lower.includes(t))) {
-          triggerHelloTwin();
+        const activeLang = localStorage.getItem("twin_lang") || "en";
+        const triggers = WAKE_WORDS_MAP[activeLang] || WAKE_WORDS_MAP.en;
+        if (triggers.some((t) => lower.includes(t))) {
+          triggerHelloTwin(activeLang);
         } else {
           sendMessage(transcript);
         }
@@ -153,10 +252,18 @@ export default function HeyTwinDialog({ isOpen, onClose }) {
       const timer = setTimeout(() => {
         if (!hasGreetedRef.current) {
           hasGreetedRef.current = true;
-          speak("What can I help you with?", () => {
+          const lang = localStorage.getItem("twin_lang") || "en";
+          const greetings = {
+            en: "What can I help you with?",
+            zh: "有什么我可以帮你的吗？",
+            ms: "Apa yang boleh saya bantu?",
+            ta: "நான் உங்களுக்கு எப்படி உதவ முடியும்?"
+          };
+          const ttsLangs = { en: "en-US", zh: "zh-CN", ms: "ms-MY", ta: "ta-IN" };
+          speak(greetings[lang] || greetings.en, () => {
             // After TTS finishes, auto-start listening
             startListening();
-          });
+          }, ttsLangs[lang] || "en-US");
         }
       }, 400);
 
@@ -197,17 +304,22 @@ export default function HeyTwinDialog({ isOpen, onClose }) {
   }, [isOpen, handleClose]);
 
   // ── Hello Twin ──
-  const triggerHelloTwin = async () => {
+  const triggerHelloTwin = async (langOverride = null) => {
     stopListening();
+    try { window.speechSynthesis?.cancel(); } catch {}
     setLoading(true);
     setResponse(null);
+    const langToUse = langOverride || localStorage.getItem("twin_lang") || "en";
     try {
-      const res = await api.helloTwin();
+      const res = await api.helloTwin(langToUse);
       setResponse(res);
+      const ttsLangs = { en: "en-US", zh: "zh-CN", ms: "ms-MY", ta: "ta-IN" };
       // Speak the response, then auto-listen for follow-up
-      speak(res.answer, () => startListening());
+      speak(res.answer, () => startListening(), ttsLangs[langToUse] || "en-US");
     } catch {
-      setResponse({ answer: "Sorry, I couldn't connect. Please try again.", powered_by: "error" });
+      const lang = localStorage.getItem("twin_lang") || "en";
+      const t = UI_TEXT[lang] || UI_TEXT.en;
+      setResponse({ answer: t.connError, powered_by: "error" });
     } finally {
       setLoading(false);
     }
@@ -219,21 +331,28 @@ export default function HeyTwinDialog({ isOpen, onClose }) {
     if (!msg || loading) return;
     setInput("");
     stopListening();
+    try { window.speechSynthesis?.cancel(); } catch {}
 
     const lower = msg.toLowerCase();
-    if (HELLO_TWIN_TRIGGERS.some((t) => lower.includes(t))) {
+    const activeLang = localStorage.getItem("twin_lang") || "en";
+    const triggers = WAKE_WORDS_MAP[activeLang] || WAKE_WORDS_MAP.en;
+    if (triggers.some((t) => lower.includes(t))) {
       return triggerHelloTwin();
     }
 
     setLoading(true);
     setResponse(null);
     try {
-      const res = await api.agentChat(msg, "hey-twin", null);
+      const lang = localStorage.getItem("twin_lang") || "en";
+      const res = await api.agentChat(msg, "default", lang);
       setResponse(res);
+      const ttsLangs = { en: "en-US", zh: "zh-CN", ms: "ms-MY", ta: "ta-IN" };
       // Speak the response, then auto-listen for follow-up
-      speak(res.answer, () => startListening());
+      speak(res.answer, () => startListening(), ttsLangs[lang] || "en-US");
     } catch {
-      setResponse({ answer: "Sorry, something went wrong. Please try again.", powered_by: "error" });
+      const lang = localStorage.getItem("twin_lang") || "en";
+      const t = UI_TEXT[lang] || UI_TEXT.en;
+      setResponse({ answer: t.error, powered_by: "error" });
     } finally {
       setLoading(false);
     }
@@ -241,6 +360,7 @@ export default function HeyTwinDialog({ isOpen, onClose }) {
 
   // ── Toggle voice ──
   const toggleListening = () => {
+    unlockAudio();
     if (listening) {
       stopListening();
     } else {
@@ -252,7 +372,8 @@ export default function HeyTwinDialog({ isOpen, onClose }) {
   const handleConfirm = async (actionId) => {
     setConfirming(true);
     try {
-      const res = await api.confirmAction(actionId);
+      const activeLang = localStorage.getItem("twin_lang") || "en";
+      const res = await api.confirmAction(actionId, activeLang);
       setResponse((prev) => ({
         ...prev,
         answer: res.answer,
@@ -260,7 +381,8 @@ export default function HeyTwinDialog({ isOpen, onClose }) {
         actions_proposed: [],
         action_id: null,
       }));
-      speak(res.answer);
+      const ttsLangs = { en: "en-US", zh: "zh-CN", ms: "ms-MY", ta: "ta-IN" };
+      speak(res.answer, null, ttsLangs[activeLang] || "en-US");
     } catch {
       // keep current response
     } finally {
@@ -269,11 +391,13 @@ export default function HeyTwinDialog({ isOpen, onClose }) {
   };
 
   const handleReject = () => {
+    const lang = localStorage.getItem("twin_lang") || "en";
+    const t = UI_TEXT[lang] || UI_TEXT.en;
     setResponse((prev) => ({
       ...prev,
       actions_proposed: [],
       action_id: null,
-      answer: prev.answer + "\n\n❌ Action cancelled.",
+      answer: prev.answer + "\n\n" + t.cancelled,
     }));
   };
 
@@ -285,6 +409,9 @@ export default function HeyTwinDialog({ isOpen, onClose }) {
   const voiceSupported = typeof window !== "undefined" && (window.SpeechRecognition || window.webkitSpeechRecognition);
 
   if (!isOpen) return null;
+
+  const currentLang = typeof window !== "undefined" ? localStorage.getItem("twin_lang") || "en" : "en";
+  const t = UI_TEXT[currentLang] || UI_TEXT.en;
 
   return (
     <div
@@ -302,7 +429,7 @@ export default function HeyTwinDialog({ isOpen, onClose }) {
             </div>
           </div>
           <div className="hey-twin-title">
-            {listening ? "Listening..." : loading ? "Thinking..." : "Hey Twin"}
+            {listening ? t.listening : loading ? t.thinking : t.title}
           </div>
         </div>
 
@@ -324,7 +451,7 @@ export default function HeyTwinDialog({ isOpen, onClose }) {
             type="text"
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            placeholder={listening ? "Listening..." : "Ask anything or give a command..."}
+            placeholder={listening ? t.listening : t.placeholder}
             className="hey-twin-input"
             disabled={loading}
             autoComplete="off"
@@ -343,12 +470,12 @@ export default function HeyTwinDialog({ isOpen, onClose }) {
           <div className="hey-twin-quick">
             <button
               className="hey-twin-quick-btn"
-              onClick={triggerHelloTwin}
+              onClick={() => { unlockAudio(); triggerHelloTwin(); }}
               style={{ borderColor: "rgba(245, 158, 11, 0.25)", color: "#fbbf24" }}
             >
-              👋 Hello Twin
+              {t.helloTwinBtn}
             </button>
-            {QUICK_ACTIONS.map((q) => (
+            {t.quick.map((q) => (
               <button
                 key={q.label}
                 className="hey-twin-quick-btn"
@@ -364,7 +491,7 @@ export default function HeyTwinDialog({ isOpen, onClose }) {
         {loading && (
           <div className="hey-twin-loading">
             <Loader2 size={16} className="hey-twin-loading-spinner" />
-            <span>Thinking...</span>
+            <span>{t.thinking}</span>
           </div>
         )}
 
@@ -414,14 +541,14 @@ export default function HeyTwinDialog({ isOpen, onClose }) {
                       className="hey-twin-confirm-btn"
                     >
                       {confirming ? <Loader2 size={14} className="hey-twin-loading-spinner" /> : <CheckCircle size={14} />}
-                      Confirm
+                      {t.confirm}
                     </button>
                     <button
                       onClick={handleReject}
                       disabled={confirming}
                       className="hey-twin-reject-btn"
                     >
-                      <XCircle size={14} /> Reject
+                      <XCircle size={14} /> {t.reject}
                     </button>
                   </div>
                 </>
@@ -447,14 +574,14 @@ export default function HeyTwinDialog({ isOpen, onClose }) {
             <span className="hey-twin-kbd">Ctrl</span>
             <span>+</span>
             <span className="hey-twin-kbd">K</span>
-            <span style={{ marginLeft: 4 }}>to open</span>
+            <span style={{ marginLeft: 4 }}>{t.hintOpen}</span>
           </div>
           <div className="hey-twin-hint">
             <span className="hey-twin-kbd">ESC</span>
-            <span style={{ marginLeft: 4 }}>to close</span>
+            <span style={{ marginLeft: 4 }}>{t.hintClose}</span>
           </div>
           <div className="hey-twin-hint">
-            🎤 say &quot;Hey Twin&quot;
+            {t.hintWake}
           </div>
         </div>
       </div>

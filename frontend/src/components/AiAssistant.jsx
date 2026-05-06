@@ -17,19 +17,30 @@ import {
   CheckCircle,
   XCircle,
   Activity,
+  Volume2,
+  VolumeX,
 } from "lucide-react";
+import { auth, db } from "../firebase";
+import { doc, setDoc } from "firebase/firestore";
 import { api } from "../api/client";
 
 // ── Language-aware UI + voice recognition ──
 const LANGUAGES = {
   en: {
     label: "English",
-    locale: "en-US",
+    ttsLocale: "en-US",
+    sttLocale: "en-US",
     placeholder: "Ask anything or give a command...",
     title: "Ask me anything about your greenhouse",
     thinking: "Thinking...",
     listening: "Listening...",
     error: "Sorry, I couldn't process that. Please try again.",
+    confirm: "Confirm",
+    reject: "Reject",
+    cancelled: "❌ Action cancelled by user.",
+    agentMode: "Agent Mode • Powered by Gemini",
+    clearChat: "Clear chat",
+    helloTwinBtn: "👋 Hello Twin",
     quick: [
       { label: "How is my greenhouse?", icon: Sparkles },
       { label: "Should I water now?", icon: Lightbulb },
@@ -41,12 +52,19 @@ const LANGUAGES = {
   },
   zh: {
     label: "中文",
-    locale: "zh-CN",
+    ttsLocale: "zh-CN",
+    sttLocale: "zh-CN",
     placeholder: "问点什么，或下达指令...",
     title: "关于温室，你想了解什么？",
     thinking: "思考中...",
     listening: "正在聆听...",
     error: "抱歉，处理失败，请重试。",
+    confirm: "确认",
+    reject: "拒绝",
+    cancelled: "❌ 操作已取消",
+    agentMode: "代理模式 • Gemini驱动",
+    clearChat: "清空对话",
+    helloTwinBtn: "👋 小双同学",
     quick: [
       { label: "温室现在怎么样？", icon: Sparkles },
       { label: "现在需要浇水吗？", icon: Lightbulb },
@@ -58,12 +76,19 @@ const LANGUAGES = {
   },
   ms: {
     label: "Malay",
-    locale: "ms-MY",
+    ttsLocale: "ms-MY",
+    sttLocale: "ms-MY",
     placeholder: "Tanya apa-apa...",
     title: "Tanya saya tentang rumah hijau anda",
     thinking: "Sedang berfikir...",
     listening: "Sedang mendengar...",
     error: "Maaf, gagal memproses. Sila cuba lagi.",
+    confirm: "Sahkan",
+    reject: "Tolak",
+    cancelled: "❌ Tindakan dibatalkan.",
+    agentMode: "Mod Ejen • Dikuasakan Gemini",
+    clearChat: "Padam sembang",
+    helloTwinBtn: "👋 Hai Kembar",
     quick: [
       { label: "Bagaimana keadaan rumah hijau?", icon: Sparkles },
       { label: "Patutkah saya siram sekarang?", icon: Lightbulb },
@@ -73,13 +98,47 @@ const LANGUAGES = {
       { label: "Apa itu pH?", icon: Leaf },
     ],
   },
+  ta: {
+    label: "Tamil",
+    ttsLocale: "ta-IN",
+    sttLocale: "en-IN",
+    placeholder: "ஏதேனும் கேளுங்கள்...",
+    title: "உங்கள் பசுமை இல்லம் பற்றி என்னிடம் கேளுங்கள்",
+    thinking: "சிந்திக்கிறது...",
+    listening: "கேட்கிறது...",
+    error: "மன்னிக்கவும், செயல்படுத்த முடியவில்லை. மீண்டும் முயற்சிக்கவும்.",
+    confirm: "உறுதி செய்",
+    reject: "நிராகரி",
+    cancelled: "❌ செயல் ரத்து செய்யப்பட்டது",
+    agentMode: "முகவர் முறை • Gemini இயக்கப்படுகிறது",
+    clearChat: "அரட்டையை அழி",
+    helloTwinBtn: "👋 ஹலோ ட்வின்",
+    quick: [
+      { label: "என் பசுமை இல்லம் எப்படி உள்ளது?", icon: Sparkles },
+      { label: "நான் இப்போது தண்ணீர் ஊற்ற வேண்டுமா?", icon: Lightbulb },
+      { label: "ஏதேனும் பிரச்சனைகள் உள்ளதா?", icon: Lightbulb },
+      { label: "எனக்கு குறிப்புகள் கொடுங்கள்", icon: Sparkles },
+      { label: "VPD என்றால் என்ன?", icon: Leaf },
+      { label: "pH பற்றி விளக்குங்கள்", icon: Leaf },
+    ],
+  },
 };
 
-// Hello Twin trigger phrases
-const HELLO_TWIN_TRIGGERS = [
-  "hello twin", "hi twin", "hey twin", "halo twin",
-  "你好孪生", "你好双胞", "嗨孪生",
-];
+const WAKE_WORDS_MAP = {
+  en: ["hello twin", "hi twin", "hey twin", "halo twin", "hey twins", "hello twins", "hi, twins", "twins"],
+  zh: ["小双同学", "你好小双", "嗨小双", "嘿小双"],
+  ms: ["hai maya", "hello maya", "maya", "hai si kembar", "hello si kembar", "si kembar"],
+  ta: ["hello twin", "hi twin", "hey twin", "halo twin", "hey twins", "hello twins", "twins"],
+};
+
+
+// ── iOS Audio Unlock ──
+const unlockAudio = () => {
+  if (typeof window !== "undefined" && "speechSynthesis" in window) {
+    const utterance = new SpeechSynthesisUtterance("");
+    window.speechSynthesis.speak(utterance);
+  }
+};
 
 function MarkdownLite({ text }) {
   if (!text) return null;
@@ -133,7 +192,7 @@ function ActionsTakenCard({ actions }) {
   );
 }
 
-function ActionsProposedCard({ actions, actionId, onConfirm, onReject, confirming }) {
+function ActionsProposedCard({ actions, actionId, onConfirm, onReject, confirming, t }) {
   if (!actions || actions.length === 0) return null;
   return (
     <div className="mt-2 space-y-2">
@@ -157,7 +216,7 @@ function ActionsProposedCard({ actions, actionId, onConfirm, onReject, confirmin
           className="flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg bg-green-600 hover:bg-green-500 disabled:bg-gray-700 text-white text-xs font-medium transition-colors"
         >
           {confirming ? <Loader2 size={12} className="animate-spin" /> : <CheckCircle size={12} />}
-          Confirm
+          {t?.confirm || "Confirm"}
         </button>
         <button
           onClick={() => onReject(actionId)}
@@ -165,7 +224,7 @@ function ActionsProposedCard({ actions, actionId, onConfirm, onReject, confirmin
           className="flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg bg-gray-700 hover:bg-gray-600 disabled:bg-gray-800 text-gray-300 text-xs font-medium transition-colors"
         >
           <XCircle size={12} />
-          Reject
+          {t?.reject || "Reject"}
         </button>
       </div>
     </div>
@@ -177,10 +236,12 @@ export default function AiAssistant({ onOpenHeyTwin }) {
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
-  const [language, setLanguage] = useState("en");
+  const [language, setLanguage] = useState(() => localStorage.getItem("twin_lang") || "zh");
   const [listening, setListening] = useState(false);
   const [showLangMenu, setShowLangMenu] = useState(false);
   const [confirming, setConfirming] = useState(false);
+  const [ttsEnabled, setTtsEnabled] = useState(true);
+  const ttsEnabledRef = useRef(true);
   const scrollRef = useRef(null);
   const inputRef = useRef(null);
   const recognitionRef = useRef(null);
@@ -192,8 +253,24 @@ export default function AiAssistant({ onOpenHeyTwin }) {
   }, [isOpen]);
 
   useEffect(() => {
+    const handleLangChange = () => {
+      const stored = localStorage.getItem("twin_lang");
+      if (stored && stored !== language) setLanguage(stored);
+    };
+    window.addEventListener("twin_lang_changed", handleLangChange);
+    return () => window.removeEventListener("twin_lang_changed", handleLangChange);
+  }, [language]);
+
+  useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
   }, [messages]);
+
+  // Stop speech if component unmounts
+  useEffect(() => {
+    return () => {
+      try { window.speechSynthesis?.cancel(); } catch {}
+    };
+  }, []);
 
   // Set up Web Speech API recognition. Reconfigured when language changes.
   useEffect(() => {
@@ -202,7 +279,7 @@ export default function AiAssistant({ onOpenHeyTwin }) {
     if (!SpeechRecognition) return;
 
     const recog = new SpeechRecognition();
-    recog.lang = t.locale;
+    recog.lang = t.sttLocale;
     recog.continuous = false;
     recog.interimResults = false;
     recog.maxAlternatives = 1;
@@ -210,10 +287,11 @@ export default function AiAssistant({ onOpenHeyTwin }) {
     recog.onresult = (event) => {
       const transcript = event.results[0]?.[0]?.transcript?.trim();
       if (transcript) {
-        // Check for Hello Twin trigger in voice input
         const lower = transcript.toLowerCase();
-        if (HELLO_TWIN_TRIGGERS.some((trigger) => lower.includes(trigger))) {
-          triggerHelloTwin();
+        // Check for Hello Twin trigger in voice input
+        const triggers = WAKE_WORDS_MAP[language] || WAKE_WORDS_MAP.en;
+        if (triggers.some((trigger) => lower.includes(trigger))) {
+          triggerHelloTwin(language);
         } else {
           setInput("");
           sendMessage(transcript);
@@ -251,13 +329,14 @@ export default function AiAssistant({ onOpenHeyTwin }) {
   };
 
   // ── Hello Twin trigger ──
-  const triggerHelloTwin = async () => {
+  const triggerHelloTwin = async (langOverride = null) => {
+    const langToUse = typeof langOverride === "string" ? langOverride : language;
     setMessages((prev) => [...prev, {
       id: Date.now(), text: "👋 Hello Twin", isUser: true,
     }]);
     setLoading(true);
     try {
-      const response = await api.helloTwin();
+      const response = await api.helloTwin(langToUse);
       setMessages((prev) => [...prev, {
         id: Date.now() + 1,
         text: response.answer,
@@ -283,8 +362,10 @@ export default function AiAssistant({ onOpenHeyTwin }) {
   const sendMessage = async (text) => {
     // Check for Hello Twin in text input
     const lower = text.toLowerCase().trim();
-    if (HELLO_TWIN_TRIGGERS.some((trigger) => lower.includes(trigger))) {
-      return triggerHelloTwin();
+    const triggers = WAKE_WORDS_MAP[language] || WAKE_WORDS_MAP.en;
+    
+    if (triggers.some((trigger) => lower === trigger || lower.includes(trigger))) {
+      return triggerHelloTwin(language);
     }
 
     setMessages((prev) => [...prev, { id: Date.now(), text, isUser: true }]);
@@ -316,7 +397,7 @@ export default function AiAssistant({ onOpenHeyTwin }) {
   const handleConfirm = async (actionId) => {
     setConfirming(true);
     try {
-      const response = await api.confirmAction(actionId);
+      const response = await api.confirmAction(actionId, language);
       setMessages((prev) => {
         // Remove the confirm/reject buttons from the proposing message
         const updated = prev.map((msg) => {
@@ -354,7 +435,7 @@ export default function AiAssistant({ onOpenHeyTwin }) {
       });
       return [...updated, {
         id: Date.now(),
-        text: "❌ Action cancelled by user.",
+        text: t.cancelled,
         isUser: false,
         intent: "cancelled",
       }];
@@ -365,12 +446,13 @@ export default function AiAssistant({ onOpenHeyTwin }) {
     if (!("speechSynthesis" in window) || !text) return;
     try {
       window.speechSynthesis.cancel();
+      if (!ttsEnabledRef.current) return;
       const clean = text
         .replace(/[#*`_>~]/g, "")
         .replace(/\n{2,}/g, ". ")
         .slice(0, 500);
       const utter = new SpeechSynthesisUtterance(clean);
-      utter.lang = t.locale;
+      utter.lang = t.ttsLocale;
       utter.rate = 1.0;
       window.speechSynthesis.speak(utter);
     } catch (e) {
@@ -394,8 +476,8 @@ export default function AiAssistant({ onOpenHeyTwin }) {
     <>
       {/* Floating button — click to open chat, double-click for Hey Twin */}
       {!isOpen && (
-        <button onClick={() => setIsOpen(true)}
-          onDoubleClick={(e) => { e.preventDefault(); onOpenHeyTwin?.(); }}
+        <button onClick={() => { setIsOpen(true); unlockAudio(); }}
+          onDoubleClick={(e) => { e.preventDefault(); unlockAudio(); onOpenHeyTwin?.(); }}
           title="Click: Chat | Double-click: Hey Twin | Ctrl+K"
           className="fixed bottom-6 right-6 z-50 w-14 h-14 rounded-full bg-gradient-to-br from-greenhouse-600 to-greenhouse-700 hover:from-greenhouse-500 hover:to-greenhouse-600 text-white shadow-lg shadow-greenhouse-600/30 flex items-center justify-center transition-all hover:scale-110">
           <Sparkles size={24} />
@@ -415,7 +497,7 @@ export default function AiAssistant({ onOpenHeyTwin }) {
               <div>
                 <h3 className="text-sm font-semibold text-white">GreenMind AI</h3>
                 <p className="text-[10px] text-greenhouse-400 flex items-center gap-1">
-                  <Zap size={8} /> Agent Mode • Powered by Gemini
+                  <Zap size={8} /> {t.agentMode}
                 </p>
               </div>
             </div>
@@ -437,6 +519,11 @@ export default function AiAssistant({ onOpenHeyTwin }) {
                         key={code}
                         onClick={() => {
                           setLanguage(code);
+                          localStorage.setItem("twin_lang", code);
+                          if (auth.currentUser) {
+                            setDoc(doc(db, "users", auth.currentUser.uid), { twin_lang: code }, { merge: true });
+                          }
+                          window.dispatchEvent(new Event("twin_lang_changed"));
                           setShowLangMenu(false);
                         }}
                         className={`w-full text-left px-3 py-1.5 text-xs hover:bg-gray-700 ${
@@ -450,13 +537,46 @@ export default function AiAssistant({ onOpenHeyTwin }) {
                 )}
               </div>
 
+              {/* TTS Toggle */}
+              <button
+                onClick={() => {
+                  const next = !ttsEnabled;
+                  setTtsEnabled(next);
+                  ttsEnabledRef.current = next;
+                  if (typeof window !== "undefined" && "speechSynthesis" in window) {
+                    if (!next) {
+                      window.speechSynthesis.pause();
+                    } else {
+                      if (window.speechSynthesis.paused) {
+                        window.speechSynthesis.resume();
+                      } else {
+                        window.speechSynthesis.speak(new SpeechSynthesisUtterance(""));
+                      }
+                    }
+                  }
+                }}
+                className={`p-1.5 rounded-lg transition-colors ${
+                  ttsEnabled ? "text-greenhouse-400 hover:bg-gray-800" : "text-gray-500 hover:bg-gray-800"
+                }`}
+                title={ttsEnabled ? "Mute voice" : "Enable voice"}
+              >
+                {ttsEnabled ? <Volume2 size={14} /> : <VolumeX size={14} />}
+              </button>
+
               {messages.length > 0 && (
                 <button onClick={() => { api.clearChat().catch(()=>{}); setMessages([]); }}
-                  className="text-gray-500 hover:text-gray-300 p-1.5" title="Clear chat">
+                  className="text-gray-500 hover:text-gray-300 p-1.5" title={t.clearChat}>
                   <Trash2 size={14} />
                 </button>
               )}
-              <button onClick={() => setIsOpen(false)} className="text-gray-500 hover:text-gray-300 p-1.5">
+              <button onClick={() => {
+                setIsOpen(false);
+                try { window.speechSynthesis?.cancel(); } catch {}
+                if (listening) {
+                  try { recognitionRef.current?.stop(); } catch {}
+                  setListening(false);
+                }
+              }} className="text-gray-500 hover:text-gray-300 p-1.5">
                 <X size={16} />
               </button>
             </div>
@@ -476,7 +596,7 @@ export default function AiAssistant({ onOpenHeyTwin }) {
                   className="mx-auto mb-4 flex items-center gap-2 px-4 py-2.5 rounded-xl bg-gradient-to-r from-amber-500/20 to-orange-500/20 border border-amber-500/40 text-amber-400 hover:from-amber-500/30 hover:to-orange-500/30 hover:border-amber-500/60 transition-all text-sm font-medium shadow-lg shadow-amber-500/10"
                 >
                   <Hand size={16} />
-                  👋 Hello Twin
+                  {t.helloTwinBtn}
                 </button>
 
                 <div className="flex flex-wrap gap-1.5 justify-center">
@@ -513,6 +633,7 @@ export default function AiAssistant({ onOpenHeyTwin }) {
                           onConfirm={handleConfirm}
                           onReject={handleReject}
                           confirming={confirming}
+                          t={t}
                         />
                       )}
                     </>
@@ -550,7 +671,7 @@ export default function AiAssistant({ onOpenHeyTwin }) {
             {voiceSupported && (
               <button
                 type="button"
-                onClick={toggleListening}
+                onClick={() => { unlockAudio(); toggleListening(); }}
                 disabled={loading}
                 title={listening ? t.listening : "Voice input"}
                 className={`px-3 py-2 rounded-xl border transition-colors ${

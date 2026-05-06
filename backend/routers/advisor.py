@@ -149,9 +149,9 @@ async def agent_chat(request: AgentChatRequest):
 
 
 @router.get("/hello-twin", response_model=AgentChatResponse)
-async def hello_twin():
+async def hello_twin(language: Optional[str] = Query(None)):
     """Trigger a Hello Twin proactive greeting with full greenhouse status analysis."""
-    result = await agent_executor.hello_twin()
+    result = await agent_executor.hello_twin(language=language)
     return AgentChatResponse(
         answer=result.get("answer", ""),
         intent=result.get("intent", "greeting"),

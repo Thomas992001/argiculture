@@ -155,7 +155,7 @@ class AgentExecutor:
 
     # ── Hello Twin ──
 
-    async def hello_twin(self) -> dict:
+    async def hello_twin(self, language: str = None) -> dict:
         """Generate a proactive greeting with full greenhouse status analysis."""
         from backend.services.gemini_advisor import gemini_advisor, _build_sensor_context
 
@@ -163,9 +163,18 @@ class AgentExecutor:
 
         if not gemini_advisor.is_available:
             # Fallback: build a basic greeting from raw data
-            return self._fallback_hello_twin(context)
+            return self._fallback_hello_twin(context, language)
 
-        prompt = f"{HELLO_TWIN_PROMPT}\n\n{context}\n\nGenerate the Hello Twin greeting now."
+        lang_map = {
+            "en": "English",
+            "zh": "Chinese (Simplified, 简体中文)",
+            "ms": "Bahasa Melayu",
+            "ta": "Tamil",
+        }
+        lang_name = lang_map.get(language, language) if language else None
+        lang_instruction = f"[Please respond in {lang_name}.]\n" if lang_name else ""
+
+        prompt = f"{lang_instruction}{HELLO_TWIN_PROMPT}\n\n{context}\n\nGenerate the Hello Twin greeting now."
 
         try:
             response = await gemini_advisor._generate_async(prompt)
@@ -183,9 +192,9 @@ class AgentExecutor:
             import traceback
             with open("hello_twin_error.txt", "w", encoding="utf-8") as f:
                 f.write(traceback.format_exc())
-            return self._fallback_hello_twin(context)
+            return self._fallback_hello_twin(context, language)
 
-    def _fallback_hello_twin(self, context: str) -> dict:
+    def _fallback_hello_twin(self, context: str, language: str = None) -> dict:
         """Build a basic greeting when Gemini is not available."""
         # Extract some basic data from twin state
         actuators = twin_state.get_all_actuators()
@@ -235,9 +244,18 @@ class AgentExecutor:
 
         # Check for Hello Twin trigger
         lower_msg = message.lower().strip()
-        hello_triggers = ["hello twin", "你好孪生", "hi twin", "hey twin", "halo twin"]
+        wake_words_map = {
+            "en": ["hello twin", "hi twin", "hey twin", "halo twin", "hey twins", "hello twins", "hi, twins", "twins"],
+            "zh": ["你好小双", "嗨小双", "嘿小双", "小双同学"],
+            "ms": ["hai maya", "hello maya", "maya", "hai si kembar", "hello si kembar", "si kembar"],
+            "ta": ["hello twin", "hi twin", "hey twin", "halo twin", "hey twins", "hello twins", "twins"]
+        }
+        
+        active_lang = language if language else "en"
+        hello_triggers = wake_words_map.get(active_lang, wake_words_map["en"])
+        
         if any(trigger in lower_msg for trigger in hello_triggers):
-            return await self.hello_twin()
+            return await self.hello_twin(active_lang)
 
         if not gemini_advisor.is_available:
             # Fall back to regular chat

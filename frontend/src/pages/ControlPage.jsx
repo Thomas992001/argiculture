@@ -11,8 +11,9 @@ import {
 } from "lucide-react";
 import { api } from "../api/client";
 import { onAuthStateChanged } from "firebase/auth";
-import { db, auth } from "../firebase";
-import { onSnapshot, doc, setDoc } from "firebase/firestore";
+import { db, rtdb, auth } from "../firebase";
+import { doc, setDoc } from "firebase/firestore";
+import { ref, update, onValue, off } from "firebase/database";
 import { useRTDBData } from "../hooks/useRTDBData";
 import { useAlerts } from "../contexts/AlertsProvider";
 import AlertPanel from "../components/AlertPanel";
@@ -207,13 +208,9 @@ export default function ControlPage() {
   const handleDeviceToggle = async (device, nextOn) => {
     const user = auth.currentUser;
     if (!user) return;
-    const controlRef = doc(db, "users", user.uid, "control", "latest");
+    const controlRef = ref(rtdb, `users/${user.uid}/live/sensors`);
     try {
-      await setDoc(
-        controlRef,
-        { [controlFirestoreKey(device)]: nextOn },
-        { merge: true }
-      );
+      await update(controlRef, { [controlFirestoreKey(device)]: nextOn });
     } catch (e) {
       console.error("Device power toggle error:", e);
     }
@@ -225,13 +222,13 @@ export default function ControlPage() {
     }
     const user = auth.currentUser;
     if (!user) return;
-    const controlRef = doc(db, "users", user.uid, "control", "latest");
+    const controlRef = ref(rtdb, `users/${user.uid}/live/sensors`);
     const updates = {};
     POWER_DEVICE_DEFS.forEach((d) => {
       updates[controlFirestoreKey(d)] = false;
     });
     try {
-      await setDoc(controlRef, updates, { merge: true });
+      await update(controlRef, updates);
     } catch (e) {
       console.error("All sensors off error:", e);
     }
@@ -240,13 +237,13 @@ export default function ControlPage() {
   const handleAllSensorsOn = async () => {
     const user = auth.currentUser;
     if (!user) return;
-    const controlRef = doc(db, "users", user.uid, "control", "latest");
+    const controlRef = ref(rtdb, `users/${user.uid}/live/sensors`);
     const updates = {};
     POWER_DEVICE_DEFS.forEach((d) => {
       updates[controlFirestoreKey(d)] = true;
     });
     try {
-      await setDoc(controlRef, updates, { merge: true });
+      await update(controlRef, updates);
     } catch (e) {
       console.error("All sensors on error:", e);
     }
@@ -257,31 +254,32 @@ export default function ControlPage() {
   }, []);
 
   useEffect(() => {
-    let unsubscribeSnapshot = null;
+    let sensorRef = null;
 
     const unsubscribeAuth = onAuthStateChanged(auth, (user) => {
-      if (unsubscribeSnapshot) {
-        unsubscribeSnapshot();
-        unsubscribeSnapshot = null;
+      if (sensorRef) {
+        off(sensorRef);
+        sensorRef = null;
       }
 
       if (!user) return;
 
-      const controlRef = doc(db, "users", user.uid, "control", "latest");
+      const path = `users/${user.uid}/live/sensors`;
+      sensorRef = ref(rtdb, path);
 
-      unsubscribeSnapshot = onSnapshot(controlRef, (snapshot) => {
-        const data = snapshot.data();
+      onValue(sensorRef, (snapshot) => {
+        const data = snapshot.val();
         if (data) {
           setCloudStates(data);
         }
       }, (error) => {
-        console.error("Firestore listener error:", error);
+        console.error("RTDB listener error:", error);
       });
     });
 
     return () => {
       unsubscribeAuth();
-      if (unsubscribeSnapshot) unsubscribeSnapshot();
+      if (sensorRef) off(sensorRef);
     };
   }, []);
 

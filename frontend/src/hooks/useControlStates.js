@@ -1,23 +1,23 @@
 import { useState, useEffect } from "react";
 import { onAuthStateChanged } from "firebase/auth";
-import { doc, onSnapshot } from "firebase/firestore";
-import { db, auth } from "../firebase";
+import { ref, onValue, off } from "firebase/database";
+import { rtdb, auth } from "../firebase";
 import { SENSOR_DEVICE_DEFS, sensorFirestoreKey } from "../utils/sensorDevices";
 
 /**
- * Listens to Firestore `users/{uid}/control/latest` for sensor power states.
+ * Listens to RTDB `users/{uid}/live/sensors` for sensor power states.
  * Returns { controlStates, activeSensorCount }.
  */
 export function useControlStates() {
   const [controlStates, setControlStates] = useState({});
 
   useEffect(() => {
-    let unsubSnapshot = null;
+    let sensorRef = null;
 
     const unsubAuth = onAuthStateChanged(auth, (user) => {
-      if (unsubSnapshot) {
-        unsubSnapshot();
-        unsubSnapshot = null;
+      if (sensorRef) {
+        off(sensorRef);
+        sensorRef = null;
       }
 
       if (!user) {
@@ -25,21 +25,21 @@ export function useControlStates() {
         return;
       }
 
-      const controlRef = doc(db, "users", user.uid, "control", "latest");
-      unsubSnapshot = onSnapshot(
-        controlRef,
+      sensorRef = ref(rtdb, `users/${user.uid}/live/sensors`);
+      onValue(
+        sensorRef,
         (snapshot) => {
-          setControlStates(snapshot.data() || {});
+          setControlStates(snapshot.val() || {});
         },
         (err) => {
-          console.error("Firestore control listener error:", err);
+          console.error("RTDB control listener error:", err);
         }
       );
     });
 
     return () => {
       unsubAuth();
-      if (unsubSnapshot) unsubSnapshot();
+      if (sensorRef) off(sensorRef);
     };
   }, []);
 

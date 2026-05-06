@@ -105,11 +105,11 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ message, session_id: sessionId, language }),
     }),
-  helloTwin: () => fetchJSON("/advisor/hello-twin"),
-  confirmAction: (actionId) =>
+  helloTwin: (language = null) => fetchJSON(`/advisor/hello-twin${language ? `?language=${language}` : ""}`),
+  confirmAction: (actionId, language = null) =>
     fetchJSON("/advisor/confirm-action", {
       method: "POST",
-      body: JSON.stringify({ action_id: actionId }),
+      body: JSON.stringify({ action_id: actionId, language }),
     }),
   getAgentLog: (limit = 50) => fetchJSON(`/advisor/agent-log?limit=${limit}`),
 };
