@@ -362,9 +362,23 @@ class GeminiAdvisor:
             print(f"[GeminiAdvisor] Chat error: {e}")
             return self._fallback_response(user_message)
 
+    # ── Language instruction helper ──
+    @staticmethod
+    def _lang_instruction(language: str = None) -> str:
+        if not language:
+            return ""
+        lang_map = {
+            "en": "English",
+            "zh": "Chinese (Simplified, 简体中文)",
+            "ms": "Bahasa Melayu",
+            "ta": "Tamil (தமிழ்)",
+        }
+        lang_name = lang_map.get(language, language)
+        return f"[IMPORTANT: You MUST respond entirely in {lang_name}.]\n\n"
+
     # ── Creative Functions ──
 
-    async def generate_daily_report(self) -> dict:
+    async def generate_daily_report(self, language: str = None) -> dict:
         """Generate a comprehensive daily greenhouse report."""
         if not self.is_available:
             return {"report": "Gemini API not available. Configure GEMINI_API_KEY.", "powered_by": "fallback"}
@@ -390,7 +404,8 @@ class GeminiAdvisor:
             f"4. **Issues & Risks** (any problems detected, disease risk assessment)\n"
             f"5. **Recommendations** (top 3-5 prioritized actions)\n"
             f"6. **Tomorrow's Plan** (what to watch for, scheduled tasks)\n\n"
-            f"Use real data. Be specific with numbers. Format with markdown."
+            f"Use real data. Be specific with numbers. Format with markdown.\n\n"
+            f"{self._lang_instruction(language)}"
         )
 
         try:
@@ -399,7 +414,7 @@ class GeminiAdvisor:
         except Exception as e:
             return {"report": f"Error generating report: {e}", "powered_by": "error"}
 
-    async def generate_grow_plan(self, crop_name: str, duration_weeks: int = 4) -> dict:
+    async def generate_grow_plan(self, crop_name: str, duration_weeks: int = 4, language: str = None) -> dict:
         """Generate a week-by-week growing plan for a specific crop."""
         if not self.is_available:
             return {"plan": "Gemini API not available.", "powered_by": "fallback"}
@@ -423,7 +438,8 @@ class GeminiAdvisor:
             f"- **Nutrient schedule** (EC targets, any supplements)\n"
             f"- **Watch points** (common problems at this stage)\n\n"
             f"Consider the CURRENT conditions shown above and note any adjustments needed. "
-            f"Format with markdown. Be practical and specific."
+            f"Format with markdown. Be practical and specific.\n\n"
+            f"{self._lang_instruction(language)}"
         )
 
         try:
@@ -432,7 +448,7 @@ class GeminiAdvisor:
         except Exception as e:
             return {"plan": f"Error: {e}", "powered_by": "error"}
 
-    async def what_if_scenario(self, scenario: str) -> dict:
+    async def what_if_scenario(self, scenario: str, language: str = None) -> dict:
         """Simulate a what-if scenario using Gemini's reasoning."""
         if not self.is_available:
             return {"analysis": "Gemini API not available.", "powered_by": "fallback"}
@@ -448,7 +464,8 @@ class GeminiAdvisor:
             f"3. **Timeline**: How quickly would effects be visible?\n"
             f"4. **Risks**: What could go wrong?\n"
             f"5. **Recommendation**: Should they do it? What precautions?\n\n"
-            f"Use physics and plant science. Reference actual sensor values. Be specific."
+            f"Use physics and plant science. Reference actual sensor values. Be specific.\n\n"
+            f"{self._lang_instruction(language)}"
         )
 
         try:
@@ -457,7 +474,7 @@ class GeminiAdvisor:
         except Exception as e:
             return {"analysis": f"Error: {e}", "powered_by": "error"}
 
-    async def diagnose_plant_image(self, image_bytes: bytes, description: str = "") -> dict:
+    async def diagnose_plant_image(self, image_bytes: bytes, description: str = "", language: str = None) -> dict:
         """Use Gemini Vision to diagnose plant health from an image."""
         if not self.is_available:
             return {"diagnosis": "Gemini API not available.", "powered_by": "fallback"}
@@ -479,7 +496,8 @@ class GeminiAdvisor:
                 f"4. **Likely Diagnosis** (nutrient deficiency, disease, pest, environmental stress)\n"
                 f"5. **Connection to Sensor Data** (do current greenhouse conditions explain the symptoms?)\n"
                 f"6. **Treatment Plan** (specific steps to fix the problem)\n\n"
-                f"Be specific and reference actual sensor data when relevant."
+                f"Be specific and reference actual sensor data when relevant.\n\n"
+                f"{self._lang_instruction(language)}"
             )
 
             image_part = types.Part.from_bytes(data=image_bytes, mime_type="image/jpeg")
@@ -526,7 +544,7 @@ class GeminiAdvisor:
         except Exception as e:
             return {"explanation": f"Error: {e}", "powered_by": "error"}
 
-    async def suggest_automation_schedule(self) -> dict:
+    async def suggest_automation_schedule(self, language: str = None) -> dict:
         """Generate a smart 24-hour automation schedule based on current data."""
         if not self.is_available:
             return {"schedule": "Gemini not available.", "powered_by": "fallback"}
@@ -541,7 +559,8 @@ class GeminiAdvisor:
             f"- **Irrigation windows** (when and how long)\n"
             f"- **Reasoning** (why this schedule optimizes for the active crop)\n\n"
             f"Consider energy efficiency, day/night cycles, and plant biology. "
-            f"Present as a clear table or timeline. Reference current conditions to justify changes."
+            f"Present as a clear table or timeline. Reference current conditions to justify changes.\n\n"
+            f"{self._lang_instruction(language)}"
         )
 
         try:
@@ -550,7 +569,7 @@ class GeminiAdvisor:
         except Exception as e:
             return {"schedule": f"Error: {e}", "powered_by": "error"}
 
-    async def educational_explain(self, topic: str) -> dict:
+    async def educational_explain(self, topic: str, language: str = None) -> dict:
         """Explain a greenhouse/hydroponics concept in beginner-friendly terms."""
         if not self.is_available:
             return {"explanation": "Gemini not available.", "powered_by": "fallback"}
@@ -565,7 +584,8 @@ class GeminiAdvisor:
             f"3. **How does it work in THIS greenhouse?** (reference real sensor values)\n"
             f"4. **Practical tips** (what should a beginner watch for)\n"
             f"5. **Fun fact** (something interesting about this topic)\n\n"
-            f"Use analogies and simple language. Make it engaging."
+            f"Use analogies and simple language. Make it engaging.\n\n"
+            f"{self._lang_instruction(language)}"
         )
 
         try:

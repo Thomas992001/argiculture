@@ -169,7 +169,7 @@ class AgentExecutor:
             "en": "English",
             "zh": "Chinese (Simplified, 简体中文)",
             "ms": "Bahasa Melayu",
-            "ta": "Tamil",
+            "ta": "Tamil (தமிழ்)",
         }
         lang_name = lang_map.get(language, language) if language else None
         lang_instruction = f"[Please respond in {lang_name}.]\n" if lang_name else ""
@@ -273,7 +273,7 @@ class AgentExecutor:
         context = _build_sensor_context()
         lang_instruction = ""
         if language:
-            lang_map = {"en": "English", "zh": "Chinese (Simplified)", "ms": "Bahasa Melayu", "ta": "Tamil"}
+            lang_map = {"en": "English", "zh": "Chinese (Simplified)", "ms": "Bahasa Melayu", "ta": "Tamil (தமிழ்)"}
             lang_name = lang_map.get(language, language)
             lang_instruction = f"\n[Respond in {lang_name}.]\n"
 

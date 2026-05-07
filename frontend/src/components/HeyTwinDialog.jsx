@@ -17,6 +17,18 @@ import { auth, db } from "../firebase";
 import { doc, setDoc } from "firebase/firestore";
 import "../styles/HeyTwinDialog.css";
 
+// Module-level ref for cloud TTS audio (so speak() can access it)
+let _cloudAudio = null;
+
+// Unified helper: stop ALL speech (browser TTS + Cloud TTS audio)
+function stopAllSpeech() {
+  try { window.speechSynthesis?.cancel(); } catch {}
+  if (_cloudAudio) {
+    try { _cloudAudio.pause(); _cloudAudio.currentTime = 0; } catch {}
+    _cloudAudio = null;
+  }
+}
+
 // ── Markdown-lite renderer ──
 function MarkdownLite({ text }) {
   if (!text) return null;
@@ -145,35 +157,66 @@ const UI_TEXT = {
 
 // ── TTS helper ──
 function speak(text, onEnd, langCode = "en-US") {
-  if (!("speechSynthesis" in window) || !text) {
+  if (!text) {
+    onEnd?.();
+    return;
+  }
+
+  // Always interrupt any ongoing speech before starting new one
+  stopAllSpeech();
+
+  // For Tamil: use Google Cloud TTS via backend (browser usually has no Tamil voice)
+  if (langCode.startsWith("ta")) {
+    const clean = text
+      .replace(/[#*`_>~|]/g, "")
+      .replace(/\n{2,}/g, ". ")
+      .replace(/---/g, "")
+      .slice(0, 500);
+    api.cloudTTS(clean, "ta")
+      .then((audioUrl) => {
+        const audio = new Audio(audioUrl);
+        _cloudAudio = audio;
+        audio.playbackRate = 1.0; // Cloud TTS already set to 1.25x
+        audio.onended = () => { URL.revokeObjectURL(audioUrl); _cloudAudio = null; onEnd?.(); };
+        audio.onerror = () => { URL.revokeObjectURL(audioUrl); _cloudAudio = null; onEnd?.(); };
+        audio.play().catch(() => onEnd?.());
+      })
+      .catch((e) => {
+        console.warn("Cloud TTS failed, falling back to browser:", e);
+        _browserSpeak(text, onEnd, langCode);
+      });
+    return;
+  }
+
+  _browserSpeak(text, onEnd, langCode);
+}
+
+function _browserSpeak(text, onEnd, langCode) {
+  if (!("speechSynthesis" in window)) {
     onEnd?.();
     return;
   }
   try {
-    window.speechSynthesis.cancel();
     const clean = text
       .replace(/[#*`_>~]/g, "")
       .replace(/\n{2,}/g, ". ")
       .slice(0, 500);
     const utter = new SpeechSynthesisUtterance(clean);
     utter.lang = langCode;
-    utter.rate = 1.0;
+    utter.rate = 1.25;
 
     const voices = window.speechSynthesis.getVoices();
     if (voices.length > 0) {
       let voice;
       if (langCode === "en-US") {
-        // User prefers the default Windows male voice (e.g. Microsoft David)
         voice = voices.find(v => v.lang.replace('_', '-') === langCode && v.name.includes("David"))
              || voices.find(v => v.lang.replace('_', '-') === langCode && !v.name.includes("Google"))
              || voices.find(v => v.lang.replace('_', '-') === langCode);
       } else {
-        // Prefer Google/Cloud voices for other languages as they sound more natural
         voice = voices.find(v => v.lang.replace('_', '-') === langCode && v.name.includes("Google"));
         if (!voice) voice = voices.find(v => v.lang.replace('_', '-') === langCode);
       }
       
-      // Fallback: If no Malay voice exists, Indonesian (id-ID) is very similar and widely supported
       if (!voice && langCode === "ms-MY") {
         voice = voices.find(v => v.lang.startsWith("id") && v.name.includes("Google")) 
              || voices.find(v => v.lang.startsWith("id"));
@@ -304,7 +347,7 @@ export default function HeyTwinDialog({ isOpen, onClose }) {
     } else {
       // Cleanup on close
       stopListening();
-      try { window.speechSynthesis?.cancel(); } catch {}
+      stopAllSpeech();
     }
   }, [isOpen, startListening, stopListening]);
 
@@ -318,7 +361,7 @@ export default function HeyTwinDialog({ isOpen, onClose }) {
   // ── Close with animation ──
   const handleClose = useCallback(() => {
     stopListening();
-    try { window.speechSynthesis?.cancel(); } catch {}
+    stopAllSpeech();
     setClosing(true);
     setTimeout(() => {
       setClosing(false);
@@ -339,7 +382,7 @@ export default function HeyTwinDialog({ isOpen, onClose }) {
   // ── Hello Twin ──
   const triggerHelloTwin = async (langOverride = null) => {
     stopListening();
-    try { window.speechSynthesis?.cancel(); } catch {}
+    stopAllSpeech();
     setLoading(true);
     setResponse(null);
     const langToUse = langOverride || localStorage.getItem("twin_lang") || "en";
@@ -364,7 +407,7 @@ export default function HeyTwinDialog({ isOpen, onClose }) {
     if (!msg || loading) return;
     setInput("");
     stopListening();
-    try { window.speechSynthesis?.cancel(); } catch {}
+    stopAllSpeech();
 
     const lower = msg.toLowerCase();
     const activeLang = localStorage.getItem("twin_lang") || "en";

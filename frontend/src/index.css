@@ -56,3 +56,34 @@ body {
 .animate-fade-glow {
   animation: fade-glow 3s ease-in-out infinite;
 }
+
+/* Liquid Glass Button */
+@keyframes liquid-morph {
+  0% { border-radius: 50%; }
+  25% { border-radius: 45% 55% 42% 58% / 55% 45% 58% 42%; }
+  50% { border-radius: 58% 42% 55% 45% / 42% 58% 45% 55%; }
+  75% { border-radius: 45% 55% 50% 50% / 55% 45% 50% 50%; }
+  100% { border-radius: 50%; }
+}
+
+.liquid-glass-btn {
+  background: linear-gradient(135deg, rgba(34, 197, 94, 0.4) 0%, rgba(21, 128, 61, 0.2) 100%);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  box-shadow: 
+    inset 0 4px 6px rgba(255, 255, 255, 0.4),
+    inset 0 -4px 6px rgba(0, 0, 0, 0.15),
+    0 10px 20px rgba(34, 197, 94, 0.3);
+  animation: liquid-morph 5s ease-in-out infinite;
+  transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
+}
+
+.liquid-glass-btn:hover {
+  background: linear-gradient(135deg, rgba(34, 197, 94, 0.5) 0%, rgba(21, 128, 61, 0.3) 100%);
+  box-shadow: 
+    inset 0 4px 6px rgba(255, 255, 255, 0.5),
+    inset 0 -4px 6px rgba(0, 0, 0, 0.15),
+    0 15px 25px rgba(34, 197, 94, 0.4);
+}
+

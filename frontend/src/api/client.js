@@ -55,21 +55,22 @@ export const api = {
     }),
   clearChat: (sessionId = "default") =>
     fetchJSON(`/advisor/chat/clear?session_id=${sessionId}`, { method: "POST" }),
-  getDailyReport: () => fetchJSON("/advisor/daily-report"),
-  getGrowPlan: (crop = "lettuce", weeks = 4) =>
+  getDailyReport: (language = null) => fetchJSON(`/advisor/daily-report${language ? `?language=${language}` : ""}`),
+  getGrowPlan: (crop = "lettuce", weeks = 4, language = null) =>
     fetchJSON("/advisor/grow-plan", {
       method: "POST",
-      body: JSON.stringify({ crop, weeks }),
+      body: JSON.stringify({ crop, weeks, language }),
     }),
-  whatIfAnalysis: (scenario) =>
+  whatIfAnalysis: (scenario, language = null) =>
     fetchJSON("/advisor/what-if", {
       method: "POST",
-      body: JSON.stringify({ scenario }),
+      body: JSON.stringify({ scenario, language }),
     }),
-  diagnosePlantImage: (file, description = "") => {
+  diagnosePlantImage: (file, description = "", language = null) => {
     const formData = new FormData();
     formData.append("image", file);
     formData.append("description", description);
+    if (language) formData.append("language", language);
     return fetch(`${API_BASE}/advisor/diagnose-image`, {
       method: "POST",
       body: formData,
@@ -78,8 +79,8 @@ export const api = {
       return r.json();
     });
   },
-  getAutomationSchedule: () => fetchJSON("/advisor/automation-schedule"),
-  learnTopic: (topic) => fetchJSON(`/advisor/learn/${encodeURIComponent(topic)}`),
+  getAutomationSchedule: (language = null) => fetchJSON(`/advisor/automation-schedule${language ? `?language=${language}` : ""}`),
+  learnTopic: (topic, language = null) => fetchJSON(`/advisor/learn/${encodeURIComponent(topic)}${language ? `?language=${language}` : ""}`),
   getCropProfiles: () => fetchJSON("/advisor/crops"),
   setActiveCrop: (cropName) =>
     fetchJSON(`/advisor/crop/${cropName}`, { method: "POST" }),
@@ -112,4 +113,16 @@ export const api = {
       body: JSON.stringify({ action_id: actionId, language }),
     }),
   getAgentLog: (limit = 50) => fetchJSON(`/advisor/agent-log?limit=${limit}`),
+
+  // Cloud TTS (for languages without native browser voice support)
+  cloudTTS: async (text, language = "ta") => {
+    const res = await fetch(`${API_BASE}/advisor/tts`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text, language }),
+    });
+    if (!res.ok) throw new Error(`TTS error: ${res.status}`);
+    const blob = await res.blob();
+    return URL.createObjectURL(blob);
+  },
 };

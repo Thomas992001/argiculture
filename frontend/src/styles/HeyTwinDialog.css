@@ -462,3 +462,25 @@
     transform: translateY(0);
   }
 }
+
+/* ¨T¨T¨T Responsive Typography for Multi-language ¨T¨T¨T */
+@media (max-width: 640px) {
+  .hey-twin-input { font-size: 13px; padding: 10px 14px; }
+  .hey-twin-response-text { font-size: 13px; line-height: 1.5; }
+  .hey-twin-title { font-size: 12px; }
+  .hey-twin-quick-btn { font-size: 11px; padding: 6px 10px; }
+  .hey-twin-action-item { font-size: 11px; padding: 6px 10px; }
+  .hey-twin-dialog { width: 95vw; }
+}
+
+@media (min-width: 768px) and (max-width: 1024px) {
+  .hey-twin-input { font-size: 14px; }
+  .hey-twin-response-text { font-size: 14px; }
+}
+
+@media (min-width: 1025px) {
+  .hey-twin-input { font-size: 15px; }
+  .hey-twin-response-text { font-size: 15px; }
+  .hey-twin-title { font-size: 14px; }
+}
+

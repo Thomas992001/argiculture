@@ -248,15 +248,15 @@ function MarkdownRenderer({ text }) {
           const sizes = { 1: "text-lg font-bold text-white mt-3", 2: "text-base font-semibold text-gray-200 mt-2", 3: "text-sm font-semibold text-gray-300 mt-2" };
           return <div key={i} className={sizes[level]} dangerouslySetInnerHTML={{ __html: content }} />;
         }
-        if (/^\d+\.\s/.test(html)) return <div key={i} className="pl-3 text-gray-300 text-sm" dangerouslySetInnerHTML={{ __html: html }} />;
+        if (/^\d+\.\s/.test(html)) return <div key={i} className="pl-3 text-gray-300 text-xs sm:text-sm md:text-base" dangerouslySetInnerHTML={{ __html: html }} />;
         if (html.startsWith("- ")) return (
-          <div key={i} className="pl-3 flex gap-2 text-sm text-gray-300">
+          <div key={i} className="pl-3 flex gap-2 text-xs sm:text-sm md:text-base text-gray-300">
             <span className="text-greenhouse-400 shrink-0">•</span>
             <span dangerouslySetInnerHTML={{ __html: html.slice(2) }} />
           </div>
         );
-        if (html.startsWith("|")) return <div key={i} className="text-xs text-gray-400 font-mono" dangerouslySetInnerHTML={{ __html: html }} />;
-        return <p key={i} className="text-sm text-gray-300" dangerouslySetInnerHTML={{ __html: html }} />;
+        if (html.startsWith("|")) return <div key={i} className="text-[10px] sm:text-xs md:text-sm text-gray-400 font-mono" dangerouslySetInnerHTML={{ __html: html }} />;
+        return <p key={i} className="text-xs sm:text-sm md:text-base text-gray-300" dangerouslySetInnerHTML={{ __html: html }} />;
       })}
     </div>
   );
@@ -277,6 +277,7 @@ export default function AssistantPage() {
   const [isListening, setIsListening] = useState(false);
   const [ttsEnabled, setTtsEnabled] = useState(true);
   const ttsEnabledRef = useRef(true);
+  const cloudAudioRef = useRef(null);
   const [showLangMenu, setShowLangMenu] = useState(false);
   const [confirming, setConfirming] = useState(false);
   const scrollRef = useRef(null);
@@ -284,19 +285,30 @@ export default function AssistantPage() {
   const fileInputRef = useRef(null);
   const recognitionRef = useRef(null);
 
+  // Unified helper: stop ALL speech (browser TTS + Cloud TTS audio)
+  const stopAllSpeech = useCallback(() => {
+    try { window.speechSynthesis?.cancel(); } catch {}
+    if (cloudAudioRef.current) {
+      try { cloudAudioRef.current.pause(); cloudAudioRef.current.currentTime = 0; } catch {}
+      cloudAudioRef.current = null;
+    }
+  }, []);
+
   const toggleTts = () => {
     const next = !ttsEnabled;
     setTtsEnabled(next);
     ttsEnabledRef.current = next;
-    if (typeof window !== "undefined" && "speechSynthesis" in window) {
-      if (!next) {
-        window.speechSynthesis.pause();
-      } else {
-        if (window.speechSynthesis.paused) {
-          window.speechSynthesis.resume();
-        } else {
-          window.speechSynthesis.speak(new SpeechSynthesisUtterance(""));
-        }
+    if (!next) {
+      // Mute: pause ongoing speech
+      try { window.speechSynthesis?.pause(); } catch {}
+      if (cloudAudioRef.current) {
+        try { cloudAudioRef.current.pause(); } catch {}
+      }
+    } else {
+      // Unmute: resume paused speech
+      try { window.speechSynthesis?.resume(); } catch {}
+      if (cloudAudioRef.current) {
+        try { cloudAudioRef.current.play(); } catch {}
       }
     }
   };
@@ -315,16 +327,40 @@ export default function AssistantPage() {
     window.addEventListener("twin_lang_changed", handleLangChange);
     return () => {
       window.removeEventListener("twin_lang_changed", handleLangChange);
-      try { window.speechSynthesis?.cancel(); } catch {}
+      stopAllSpeech();
     };
-  }, []);
+  }, [stopAllSpeech]);
 
   const speakText = useCallback((text) => {
-    if (!text || !window.speechSynthesis) return;
-    window.speechSynthesis.cancel();
+    if (!text) return;
     if (!ttsEnabledRef.current) return;
     const selected = LANGUAGES.find((l) => l.code === voiceLang);
     const langCode = selected ? selected.ttsLang : "en-US";
+
+    // Always interrupt any ongoing speech before starting new one
+    stopAllSpeech();
+
+    // Tamil: use Cloud TTS via backend
+    if (langCode.startsWith("ta")) {
+      const clean = String(text)
+        .replace(/[#*`_>~|]/g, "")
+        .replace(/\n{2,}/g, ". ")
+        .replace(/---/g, "")
+        .slice(0, 500);
+      api.cloudTTS(clean, "ta")
+        .then((audioUrl) => {
+          if (!ttsEnabledRef.current) { URL.revokeObjectURL(audioUrl); return; }
+          const audio = new Audio(audioUrl);
+          cloudAudioRef.current = audio;
+          audio.onended = () => { URL.revokeObjectURL(audioUrl); cloudAudioRef.current = null; };
+          audio.onerror = () => { URL.revokeObjectURL(audioUrl); cloudAudioRef.current = null; };
+          audio.play().catch(() => {});
+        })
+        .catch((e) => console.warn("Cloud TTS failed:", e));
+      return;
+    }
+
+    if (!window.speechSynthesis) return;
     const plain = String(text)
       .replace(/\*\*(.+?)\*\*/g, "$1")
       .replace(/\*(.+?)\*/g, "$1")
@@ -336,19 +372,17 @@ export default function AssistantPage() {
     const chunk = plain.length > maxLen ? plain.slice(0, maxLen) + "..." : plain;
     const utterance = new SpeechSynthesisUtterance(chunk);
     utterance.lang = langCode;
-    utterance.rate = 1.0;
+    utterance.rate = 1.25;
     utterance.pitch = 1.0;
 
     const voices = window.speechSynthesis.getVoices();
     if (voices.length > 0) {
       let voice;
       if (langCode === "en-US") {
-        // User prefers the default Windows male voice (e.g. Microsoft David)
         voice = voices.find(v => v.lang.replace('_', '-') === langCode && v.name.includes("David"))
              || voices.find(v => v.lang.replace('_', '-') === langCode && !v.name.includes("Google"))
              || voices.find(v => v.lang.replace('_', '-') === langCode);
       } else {
-        // Prefer Google/Cloud voices for other languages as they sound more natural
         voice = voices.find(v => v.lang.replace('_', '-') === langCode && v.name.includes("Google"));
         if (!voice) voice = voices.find(v => v.lang.replace('_', '-') === langCode);
       }
@@ -357,16 +391,13 @@ export default function AssistantPage() {
         voice = voices.find(v => v.lang.startsWith("id") && v.name.includes("Google")) 
              || voices.find(v => v.lang.startsWith("id"));
       }
-      if (!voice && langCode.startsWith("ta")) {
-        voice = voices.find(v => v.lang.startsWith("ta"));
-      }
       if (voice) {
         utterance.voice = voice;
       }
     }
 
     window.speechSynthesis.speak(utterance);
-  }, [voiceLang]);
+  }, [voiceLang, stopAllSpeech]);
 
   const startListening = useCallback(() => {
     if (!speechSupported) return;
@@ -425,7 +456,7 @@ export default function AssistantPage() {
   }, [speakText]);
 
   const handleHelloTwin = async (langOverride = null) => {
-    try { window.speechSynthesis?.cancel(); } catch {}
+    stopAllSpeech();
     setLoading(true);
     setInput("");
     try {
@@ -447,7 +478,7 @@ export default function AssistantPage() {
   const handleSend = async (textOverride) => {
     const text = typeof textOverride === "string" ? textOverride : input;
     if (!text.trim() && !imageFile) return;
-    try { window.speechSynthesis?.cancel(); } catch {}
+    stopAllSpeech();
 
     const lower = text.toLowerCase().trim();
     const triggers = WAKE_WORDS_MAP[voiceLang] || WAKE_WORDS_MAP.en;
@@ -515,6 +546,7 @@ export default function AssistantPage() {
 
   const runTool = async (toolId) => {
     setLoading(true);
+    const activeLang = voiceLang || "en";
     try {
       let result;
       switch (toolId) {
@@ -524,32 +556,32 @@ export default function AssistantPage() {
           return;
         case "report":
           setMessages((prev) => [...prev, { id: Date.now(), text: (LANGUAGES.find((l) => l.code === voiceLang) || LANGUAGES[0]).ui.reportText, isUser: true }]);
-          result = await api.getDailyReport();
+          result = await api.getDailyReport(activeLang);
           addBotMessage(result.report, { powered_by: result.powered_by });
           break;
         case "schedule":
           setMessages((prev) => [...prev, { id: Date.now(), text: (LANGUAGES.find((l) => l.code === voiceLang) || LANGUAGES[0]).ui.scheduleText, isUser: true }]);
-          result = await api.getAutomationSchedule();
+          result = await api.getAutomationSchedule(activeLang);
           addBotMessage(result.schedule, { powered_by: result.powered_by });
           break;
         case "whatif":
           if (!toolInput.trim()) { setLoading(false); return; }
           setMessages((prev) => [...prev, { id: Date.now(), text: `What if: ${toolInput}`, isUser: true }]);
-          result = await api.whatIfAnalysis(toolInput);
+          result = await api.whatIfAnalysis(toolInput, activeLang);
           addBotMessage(result.analysis, { powered_by: result.powered_by });
           setToolInput("");
           setActiveTool(null);
           break;
         case "growplan":
           setMessages((prev) => [...prev, { id: Date.now(), text: `Create a grow plan for ${selectedCrop}`, isUser: true }]);
-          result = await api.getGrowPlan(selectedCrop, 4);
+          result = await api.getGrowPlan(selectedCrop, 4, activeLang);
           addBotMessage(result.plan, { powered_by: result.powered_by });
           setActiveTool(null);
           break;
         case "diagnose":
           if (!imageFile) { setLoading(false); return; }
           setMessages((prev) => [...prev, { id: Date.now(), text: `Diagnose plant image: ${imageFile.name}`, isUser: true }]);
-          result = await api.diagnosePlantImage(imageFile, toolInput);
+          result = await api.diagnosePlantImage(imageFile, toolInput, activeLang);
           addBotMessage(result.diagnosis, { powered_by: result.powered_by });
           setImageFile(null);
           setToolInput("");
@@ -558,7 +590,7 @@ export default function AssistantPage() {
         case "learn":
           if (!toolInput.trim()) { setLoading(false); return; }
           setMessages((prev) => [...prev, { id: Date.now(), text: `Teach me about: ${toolInput}`, isUser: true }]);
-          result = await api.learnTopic(toolInput);
+          result = await api.learnTopic(toolInput, activeLang);
           addBotMessage(result.explanation, { powered_by: result.powered_by });
           setToolInput("");
           setActiveTool(null);
@@ -670,7 +702,7 @@ export default function AssistantPage() {
 
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
         {/* Chat — main area */}
-        <div className="lg:col-span-3 flex flex-col bg-gray-900/50 backdrop-blur-sm rounded-xl border border-gray-800 overflow-hidden" style={{ height: "700px" }}>
+        <div className="lg:col-span-3 flex flex-col bg-gray-900/50 backdrop-blur-sm rounded-xl border border-gray-800 overflow-hidden h-[80vh] min-h-[500px] max-h-[800px] lg:h-[700px] lg:max-h-none">
           {/* Messages */}
           <div ref={scrollRef} className="flex-1 overflow-y-auto p-5 space-y-4">
             {messages.length === 0 && (
@@ -687,7 +719,7 @@ export default function AssistantPage() {
                     const tLabel = ui.quickActions?.[i]?.label || q.label;
                     return (
                       <button key={i} onClick={() => q.isHelloTwin ? handleHelloTwin() : handleSend(tLabel)}
-                        className={`flex items-center gap-2 px-3 py-2.5 rounded-lg border text-xs transition-all text-left ${
+                        className={`flex items-center gap-2 px-3 py-2.5 rounded-lg border text-[10px] sm:text-xs md:text-sm transition-all text-left ${
                           q.isHelloTwin
                             ? "bg-gradient-to-r from-amber-500/20 to-orange-500/20 border-amber-500/40 text-amber-400 hover:from-amber-500/30 hover:to-orange-500/30 font-medium"
                             : "bg-gray-800 border-gray-700 text-gray-400 hover:text-white hover:border-greenhouse-600/40"
@@ -712,7 +744,7 @@ export default function AssistantPage() {
                   msg.isUser ? "bg-blue-600/20 border border-blue-600/30" : "bg-gray-800/70 border border-gray-700/50"
                 }`}>
                   {msg.isUser ? (
-                    <p className="text-sm text-blue-200">{msg.text}</p>
+                    <p className="text-xs sm:text-sm md:text-base text-blue-200">{msg.text}</p>
                   ) : (
                     <>
                       <MarkdownRenderer text={msg.text} />
@@ -900,8 +932,8 @@ export default function AssistantPage() {
                   <div className="flex items-center gap-2.5">
                     <tool.icon size={16} className={tool.color} />
                     <div>
-                      <p className="text-xs font-medium text-gray-200">{tInfo.label}</p>
-                      <p className="text-[10px] text-gray-500">{tInfo.description}</p>
+                      <p className="text-[11px] sm:text-xs md:text-sm font-medium text-gray-200">{tInfo.label}</p>
+                      <p className="text-[9px] sm:text-[10px] md:text-xs text-gray-500">{tInfo.description}</p>
                     </div>
                   </div>
                 </button>

@@ -6,6 +6,7 @@ Falls back to local rule-based engine if Gemini API key is not configured.
 """
 
 from fastapi import APIRouter, Query, UploadFile, File, Form
+from fastapi.responses import Response
 from pydantic import BaseModel
 from typing import List, Optional, Dict
 
@@ -30,11 +31,13 @@ class ChatRequest(BaseModel):
 
 class WhatIfRequest(BaseModel):
     scenario: str
+    language: Optional[str] = None
 
 
 class GrowPlanRequest(BaseModel):
     crop: str = "lettuce"
     weeks: int = 4
+    language: Optional[str] = None
 
 
 class ChatResponseModel(BaseModel):
@@ -97,7 +100,7 @@ async def chat(request: ChatRequest):
         "en": "English",
         "zh": "Chinese (Simplified, \u7b80\u4f53\u4e2d\u6587)",
         "ms": "Bahasa Melayu",
-        "ta": "Tamil",
+        "ta": "Tamil (தமிழ்)",
     }
     msg = request.message
     if request.language:
@@ -132,7 +135,7 @@ async def agent_chat(request: AgentChatRequest):
         "en": "English",
         "zh": "Chinese (Simplified, 简体中文)",
         "ms": "Bahasa Melayu",
-        "ta": "Tamil",
+        "ta": "Tamil (தமிழ்)",
     }
     language = request.language
 
@@ -185,31 +188,32 @@ async def get_agent_log(limit: int = Query(50, ge=1, le=200)):
 # ── Creative AI Functions ──
 
 @router.get("/daily-report")
-async def get_daily_report():
+async def get_daily_report(language: Optional[str] = Query(None)):
     """Generate a comprehensive AI-powered daily greenhouse report."""
-    return await gemini_advisor.generate_daily_report()
+    return await gemini_advisor.generate_daily_report(language=language)
 
 
 @router.post("/grow-plan")
 async def get_grow_plan(request: GrowPlanRequest):
     """Generate a week-by-week AI growing plan for a specific crop."""
-    return await gemini_advisor.generate_grow_plan(request.crop, request.weeks)
+    return await gemini_advisor.generate_grow_plan(request.crop, request.weeks, language=request.language)
 
 
 @router.post("/what-if")
 async def what_if_analysis(request: WhatIfRequest):
     """Simulate a what-if scenario. Ask 'What happens if I turn off the fan?'"""
-    return await gemini_advisor.what_if_scenario(request.scenario)
+    return await gemini_advisor.what_if_scenario(request.scenario, language=request.language)
 
 
 @router.post("/diagnose-image")
 async def diagnose_plant_image(
     image: UploadFile = File(...),
     description: str = Form(""),
+    language: str = Form(None),
 ):
     """Upload a plant image for AI-powered health diagnosis using Gemini Vision."""
     image_bytes = await image.read()
-    return await gemini_advisor.diagnose_plant_image(image_bytes, description)
+    return await gemini_advisor.diagnose_plant_image(image_bytes, description, language=language)
 
 
 @router.post("/explain-anomaly")
@@ -224,15 +228,15 @@ async def explain_anomaly(
 
 
 @router.get("/automation-schedule")
-async def get_automation_schedule():
+async def get_automation_schedule(language: Optional[str] = Query(None)):
     """Generate an AI-optimized 24-hour automation schedule."""
-    return await gemini_advisor.suggest_automation_schedule()
+    return await gemini_advisor.suggest_automation_schedule(language=language)
 
 
 @router.get("/learn/{topic}")
-async def learn_topic(topic: str):
+async def learn_topic(topic: str, language: Optional[str] = Query(None)):
     """Learn about a greenhouse topic with beginner-friendly AI explanations."""
-    return await gemini_advisor.educational_explain(topic)
+    return await gemini_advisor.educational_explain(topic, language=language)
 
 
 # ── Status ──
@@ -426,3 +430,25 @@ async def get_vpd_info():
         "status": status, "ideal_range": f"{crop.vpd_min}-{crop.vpd_max} kPa",
         "crop": crop.name,
     }
+
+
+# ── Cloud TTS (for languages without native browser voices) ──
+
+class TTSRequest(BaseModel):
+    text: str
+    language: str = "ta"  # "ta" | "en" | "zh" | "ms"
+
+
+@router.post("/tts")
+async def cloud_tts(req: TTSRequest):
+    """Synthesize speech via Google Cloud TTS and return MP3 audio."""
+    try:
+        from backend.services.tts_service import synthesize_speech
+        audio_bytes = synthesize_speech(req.text, req.language)
+        return Response(
+            content=audio_bytes,
+            media_type="audio/mpeg",
+            headers={"Content-Disposition": "inline; filename=tts.mp3"},
+        )
+    except Exception as e:
+        return {"error": str(e)}

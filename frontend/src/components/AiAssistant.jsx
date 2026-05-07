@@ -149,20 +149,20 @@ function MarkdownLite({ text }) {
         if (!line.trim()) return <div key={i} className="h-1" />;
         let html = line
           .replace(/\*\*(.+?)\*\*/g, '<strong class="text-white font-semibold">$1</strong>')
-          .replace(/`(.+?)`/g, '<code class="px-1 rounded bg-gray-800 text-greenhouse-300 text-[11px]">$1</code>');
+          .replace(/`(.+?)`/g, '<code class="px-1 rounded bg-gray-800 text-greenhouse-300 text-[10px] sm:text-[11px]">$1</code>');
 
         if (/^#{1,3}\s/.test(line)) {
           const content = html.replace(/^#{1,3}\s/, "");
-          return <div key={i} className="text-sm font-semibold text-white mt-1" dangerouslySetInnerHTML={{ __html: content }} />;
+          return <div key={i} className="text-[13px] sm:text-sm font-semibold text-white mt-1" dangerouslySetInnerHTML={{ __html: content }} />;
         }
-        if (/^\d+\.\s/.test(html)) return <div key={i} className="pl-3 text-gray-300" dangerouslySetInnerHTML={{ __html: html }} />;
+        if (/^\d+\.\s/.test(html)) return <div key={i} className="pl-3 text-gray-300 text-[13px] sm:text-sm" dangerouslySetInnerHTML={{ __html: html }} />;
         if (html.startsWith("- ")) return (
-          <div key={i} className="pl-3 flex gap-1.5 text-gray-300">
+          <div key={i} className="pl-3 flex gap-1.5 text-gray-300 text-[13px] sm:text-sm">
             <span className="text-greenhouse-400 shrink-0">•</span>
             <span dangerouslySetInnerHTML={{ __html: html.slice(2) }} />
           </div>
         );
-        return <p key={i} className="text-gray-300" dangerouslySetInnerHTML={{ __html: html }} />;
+        return <p key={i} className="text-gray-300 text-[13px] sm:text-sm" dangerouslySetInnerHTML={{ __html: html }} />;
       })}
     </div>
   );
@@ -242,9 +242,19 @@ export default function AiAssistant({ onOpenHeyTwin }) {
   const [confirming, setConfirming] = useState(false);
   const [ttsEnabled, setTtsEnabled] = useState(true);
   const ttsEnabledRef = useRef(true);
+  const cloudAudioRef = useRef(null);
   const scrollRef = useRef(null);
   const inputRef = useRef(null);
   const recognitionRef = useRef(null);
+
+  // Unified helper: stop ALL speech (browser TTS + Cloud TTS audio)
+  const stopAllSpeech = () => {
+    try { window.speechSynthesis?.cancel(); } catch {}
+    if (cloudAudioRef.current) {
+      try { cloudAudioRef.current.pause(); cloudAudioRef.current.currentTime = 0; } catch {}
+      cloudAudioRef.current = null;
+    }
+  };
 
   const t = LANGUAGES[language];
 
@@ -267,9 +277,7 @@ export default function AiAssistant({ onOpenHeyTwin }) {
 
   // Stop speech if component unmounts
   useEffect(() => {
-    return () => {
-      try { window.speechSynthesis?.cancel(); } catch {}
-    };
+    return () => stopAllSpeech();
   }, []);
 
   // Set up Web Speech API recognition. Reconfigured when language changes.
@@ -443,17 +451,41 @@ export default function AiAssistant({ onOpenHeyTwin }) {
   };
 
   const speakResponse = (text) => {
-    if (!("speechSynthesis" in window) || !text) return;
+    if (!text) return;
+    if (!ttsEnabledRef.current) return;
+
+    // Always interrupt any ongoing speech before starting new one
+    stopAllSpeech();
+
+    // Tamil: use Cloud TTS via backend
+    if (t.ttsLocale.startsWith("ta")) {
+      const clean = text
+        .replace(/[#*`_>~|]/g, "")
+        .replace(/\n{2,}/g, ". ")
+        .replace(/---/g, "")
+        .slice(0, 500);
+      api.cloudTTS(clean, "ta")
+        .then((audioUrl) => {
+          if (!ttsEnabledRef.current) { URL.revokeObjectURL(audioUrl); return; }
+          const audio = new Audio(audioUrl);
+          cloudAudioRef.current = audio;
+          audio.onended = () => { URL.revokeObjectURL(audioUrl); cloudAudioRef.current = null; };
+          audio.onerror = () => { URL.revokeObjectURL(audioUrl); cloudAudioRef.current = null; };
+          audio.play().catch(() => {});
+        })
+        .catch((e) => console.warn("Cloud TTS failed:", e));
+      return;
+    }
+
+    if (!("speechSynthesis" in window)) return;
     try {
-      window.speechSynthesis.cancel();
-      if (!ttsEnabledRef.current) return;
       const clean = text
         .replace(/[#*`_>~]/g, "")
         .replace(/\n{2,}/g, ". ")
         .slice(0, 500);
       const utter = new SpeechSynthesisUtterance(clean);
       utter.lang = t.ttsLocale;
-      utter.rate = 1.0;
+      utter.rate = 1.25;
 
       const voices = window.speechSynthesis.getVoices();
       if (voices.length > 0) {
@@ -470,9 +502,6 @@ export default function AiAssistant({ onOpenHeyTwin }) {
         if (!voice && t.ttsLocale === "ms-MY") {
           voice = voices.find(v => v.lang.startsWith("id") && v.name.includes("Google")) 
                || voices.find(v => v.lang.startsWith("id"));
-        }
-        if (!voice && t.ttsLocale.startsWith("ta")) {
-          voice = voices.find(v => v.lang.startsWith("ta"));
         }
         if (voice) {
           utter.voice = voice;
@@ -504,7 +533,7 @@ export default function AiAssistant({ onOpenHeyTwin }) {
         <button onClick={() => { setIsOpen(true); unlockAudio(); }}
           onDoubleClick={(e) => { e.preventDefault(); unlockAudio(); onOpenHeyTwin?.(); }}
           title="Click: Chat | Double-click: Hey Twin | Ctrl+K"
-          className="fixed bottom-6 right-6 z-50 w-14 h-14 rounded-full bg-gradient-to-br from-greenhouse-600 to-greenhouse-700 hover:from-greenhouse-500 hover:to-greenhouse-600 text-white shadow-lg shadow-greenhouse-600/30 flex items-center justify-center transition-all hover:scale-110">
+          className="fixed bottom-24 sm:bottom-6 right-6 z-50 w-14 h-14 liquid-glass-btn text-white flex items-center justify-center hover:scale-110">
           <Sparkles size={24} />
           <span className="absolute -top-1 -right-1 w-3 h-3 bg-greenhouse-400 rounded-full animate-pulse-green" />
         </button>
@@ -512,7 +541,7 @@ export default function AiAssistant({ onOpenHeyTwin }) {
 
       {/* Chat panel */}
       {isOpen && (
-        <div className="fixed bottom-6 right-6 z-50 w-[420px] max-h-[600px] bg-gray-900 border border-gray-700 rounded-2xl shadow-2xl shadow-black/50 flex flex-col animate-slide-up overflow-hidden">
+        <div className="fixed sm:bottom-6 sm:right-6 bottom-0 right-0 z-50 w-full sm:w-[420px] h-[100dvh] sm:h-auto sm:max-h-[600px] bg-gray-900 border-t sm:border border-gray-700 rounded-t-2xl sm:rounded-2xl shadow-2xl shadow-black/50 flex flex-col animate-slide-up overflow-hidden">
           {/* Header */}
           <div className="flex items-center justify-between p-4 border-b border-gray-800 bg-gradient-to-r from-gray-900 to-gray-900/95">
             <div className="flex items-center gap-2.5">
@@ -568,15 +597,17 @@ export default function AiAssistant({ onOpenHeyTwin }) {
                   const next = !ttsEnabled;
                   setTtsEnabled(next);
                   ttsEnabledRef.current = next;
-                  if (typeof window !== "undefined" && "speechSynthesis" in window) {
-                    if (!next) {
-                      window.speechSynthesis.pause();
-                    } else {
-                      if (window.speechSynthesis.paused) {
-                        window.speechSynthesis.resume();
-                      } else {
-                        window.speechSynthesis.speak(new SpeechSynthesisUtterance(""));
-                      }
+                  if (!next) {
+                    // Mute: pause ongoing speech
+                    try { window.speechSynthesis?.pause(); } catch {}
+                    if (cloudAudioRef.current) {
+                      try { cloudAudioRef.current.pause(); } catch {}
+                    }
+                  } else {
+                    // Unmute: resume paused speech
+                    try { window.speechSynthesis?.resume(); } catch {}
+                    if (cloudAudioRef.current) {
+                      try { cloudAudioRef.current.play(); } catch {}
                     }
                   }
                 }}
@@ -596,7 +627,7 @@ export default function AiAssistant({ onOpenHeyTwin }) {
               )}
               <button onClick={() => {
                 setIsOpen(false);
-                try { window.speechSynthesis?.cancel(); } catch {}
+                stopAllSpeech();
                 if (listening) {
                   try { recognitionRef.current?.stop(); } catch {}
                   setListening(false);
@@ -646,7 +677,7 @@ export default function AiAssistant({ onOpenHeyTwin }) {
                   msg.isUser ? "bg-blue-600/20 border border-blue-600/30" : "bg-gray-800/80 border border-gray-700/50"
                 }`}>
                   {msg.isUser ? (
-                    <p className="text-sm text-blue-200">{msg.text}</p>
+                    <p className="text-[13px] sm:text-sm text-blue-200">{msg.text}</p>
                   ) : (
                     <>
                       <MarkdownLite text={msg.text} />
