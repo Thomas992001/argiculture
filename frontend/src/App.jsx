@@ -18,9 +18,9 @@ import { AlertsProvider } from "./contexts/AlertsProvider";
 
 const WAKE_WORDS_MAP = {
   en: ["hello twin", "hi twin", "hey twin", "halo twin", "hey twins", "hello twins", "hi, twins", "twins"],
-  zh: ["小双同学", "你好小双", "嗨小双", "嘿小双"],
-  ms: ["hai maya", "hello maya", "maya", "hai si kembar", "hello si kembar", "si kembar"],
-  ta: ["hello twin", "hi twin", "hey twin", "halo twin", "hey twins", "hello twins", "twins"],
+  zh: ["小双同学", "你好小双", "嗨小双", "嘿小双", "你好 twin", "twins", "twin", "hi twin", "hello twin", "hey twin"],
+  ms: ["hi twins", "hello twins", "hey twins", "twins", "hi twin", "hello twin", "hey twin", "halo twin", "hi, twins"],
+  ta: ["hello twin", "hi twin", "hey twin", "halo twin", "hey twins", "hello twins", "twins", "ஹலோ ட்வின்", "ஹலோ ட்வின்ஸ்", "ட்வின்", "ட்வின்ஸ்"],
 };
 
 // Wake word phrases to detect in continuous listening
@@ -54,6 +54,12 @@ export default function App() {
       }
       setLoading(false);
     });
+
+    // Force browser to load TTS voices early in the background
+    if (typeof window !== "undefined" && "speechSynthesis" in window) {
+      window.speechSynthesis.getVoices();
+    }
+
     return () => unsubscribe();
   }, []);
 
@@ -91,7 +97,7 @@ export default function App() {
       try {
         const recog = new SpeechRecognition();
         const savedLang = twinLang;
-        const localeMap = { en: "en-US", zh: "zh-CN", ms: "ms-MY", ta: "en-IN" }; // ta uses en-IN for wake word
+        const localeMap = { en: "en-US", zh: "zh-CN", ms: "ms-MY", ta: "ta-IN" };
         recog.lang = (savedLang && localeMap[savedLang]) ? localeMap[savedLang] : (navigator.language || "en-US");
         recog.continuous = true;
         recog.interimResults = true;

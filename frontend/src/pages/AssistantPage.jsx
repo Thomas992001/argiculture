@@ -88,12 +88,12 @@ const LANGUAGES = [
       thinking: "Gemini sedang berfikir...",
       toolsTitle: "Alat Kuasa AI",
       insightsTitle: "Wawasan Pantas",
-      helloTwinBtn: "👋 Hai Kembar",
+      helloTwinBtn: "👋 Hai Twin",
       clearChatTitle: "Padam perbualan",
       reportText: "Jana laporan harian rumah hijau",
       scheduleText: "Buat jadual automasi 24 jam pintar",
       quickActions: [
-        { label: "👋 Hai Kembar", isHelloTwin: true },
+        { label: "👋 Hai Twin", isHelloTwin: true },
         { label: "Bagaimana keadaan rumah hijau?" },
         { label: "Ada masalah?" },
         { label: "Patutkah saya siram sekarang?" },
@@ -103,7 +103,7 @@ const LANGUAGES = [
         { label: "Tanaman apa yang sesuai?" },
       ],
       aiTools: [
-        { id: "hellotwin", label: "Hai Kembar", description: "Ucapan AI proaktif dengan analisis status penuh" },
+        { id: "hellotwin", label: "Hai Twin", description: "Ucapan AI proaktif dengan analisis status penuh" },
         { id: "report", label: "Laporan Harian", description: "Jana laporan analisis rumah hijau penuh AI" },
         { id: "schedule", label: "Jadual Pintar", description: "Jadual automasi 24-jam dioptimumkan AI" },
         { id: "whatif", label: "Senario Jika", description: "Simulasi perubahan sebelum melakukannya" },
@@ -155,7 +155,7 @@ const LANGUAGES = [
     }
   },
   { 
-    code: "ta", label: "தமிழ்", ttsLang: "ta-IN", sttLang: "en-IN", confirm: "உறுதி செய்", reject: "நிராகரி", cancelled: "❌ செயல் ரத்து செய்யப்பட்டது",
+    code: "ta", label: "தமிழ்", ttsLang: "ta-IN", sttLang: "ta-IN", confirm: "உறுதி செய்", reject: "நிராகரி", cancelled: "❌ செயல் ரத்து செய்யப்பட்டது",
     ui: {
       title: "AI உதவியாளர்",
       subtitle: "Google Gemini மூலம் இயக்கப்படுகிறது — நேரடி சென்சார் தரவுடன்",
@@ -197,9 +197,9 @@ const LANGUAGES = [
 
 const WAKE_WORDS_MAP = {
   en: ["hello twin", "hi twin", "hey twin", "halo twin", "hey twins", "hello twins", "hi, twins", "twins"],
-  zh: ["小双同学", "你好小双", "嗨小双", "嘿小双"],
-  ms: ["hai maya", "hello maya", "maya", "hai si kembar", "hello si kembar", "si kembar"],
-  ta: ["hello twin", "hi twin", "hey twin", "halo twin", "hey twins", "hello twins", "twins"],
+  zh: ["小双同学", "你好小双", "嗨小双", "嘿小双", "你好 twin", "twins", "twin", "hi twin", "hello twin", "hey twin"],
+  ms: ["hi twins", "hello twins", "hey twins", "twins", "hi twin", "hello twin", "hey twin", "halo twin", "hi, twins"],
+  ta: ["hello twin", "hi twin", "hey twin", "halo twin", "hey twins", "hello twins", "twins", "ஹலோ ட்வின்", "ஹலோ ட்வின்ஸ்", "ட்வின்", "ட்வின்ஸ்"],
 };
 
 const QUICK_ACTIONS = [
@@ -323,9 +323,8 @@ export default function AssistantPage() {
     if (!text || !window.speechSynthesis) return;
     window.speechSynthesis.cancel();
     if (!ttsEnabledRef.current) return;
-    const u = new SpeechSynthesisUtterance(text);
     const selected = LANGUAGES.find((l) => l.code === voiceLang);
-    u.lang = selected ? selected.ttsLang : "en-US";
+    const langCode = selected ? selected.ttsLang : "en-US";
     const plain = String(text)
       .replace(/\*\*(.+?)\*\*/g, "$1")
       .replace(/\*(.+?)\*/g, "$1")
@@ -336,9 +335,36 @@ export default function AssistantPage() {
     const maxLen = 500;
     const chunk = plain.length > maxLen ? plain.slice(0, maxLen) + "..." : plain;
     const utterance = new SpeechSynthesisUtterance(chunk);
-    utterance.lang = u.lang;
+    utterance.lang = langCode;
     utterance.rate = 1.0;
     utterance.pitch = 1.0;
+
+    const voices = window.speechSynthesis.getVoices();
+    if (voices.length > 0) {
+      let voice;
+      if (langCode === "en-US") {
+        // User prefers the default Windows male voice (e.g. Microsoft David)
+        voice = voices.find(v => v.lang.replace('_', '-') === langCode && v.name.includes("David"))
+             || voices.find(v => v.lang.replace('_', '-') === langCode && !v.name.includes("Google"))
+             || voices.find(v => v.lang.replace('_', '-') === langCode);
+      } else {
+        // Prefer Google/Cloud voices for other languages as they sound more natural
+        voice = voices.find(v => v.lang.replace('_', '-') === langCode && v.name.includes("Google"));
+        if (!voice) voice = voices.find(v => v.lang.replace('_', '-') === langCode);
+      }
+      
+      if (!voice && langCode === "ms-MY") {
+        voice = voices.find(v => v.lang.startsWith("id") && v.name.includes("Google")) 
+             || voices.find(v => v.lang.startsWith("id"));
+      }
+      if (!voice && langCode.startsWith("ta")) {
+        voice = voices.find(v => v.lang.startsWith("ta"));
+      }
+      if (voice) {
+        utterance.voice = voice;
+      }
+    }
+
     window.speechSynthesis.speak(utterance);
   }, [voiceLang]);
 

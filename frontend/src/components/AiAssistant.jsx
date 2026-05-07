@@ -88,7 +88,7 @@ const LANGUAGES = {
     cancelled: "❌ Tindakan dibatalkan.",
     agentMode: "Mod Ejen • Dikuasakan Gemini",
     clearChat: "Padam sembang",
-    helloTwinBtn: "👋 Hai Kembar",
+    helloTwinBtn: "👋 Hai Twin",
     quick: [
       { label: "Bagaimana keadaan rumah hijau?", icon: Sparkles },
       { label: "Patutkah saya siram sekarang?", icon: Lightbulb },
@@ -101,7 +101,7 @@ const LANGUAGES = {
   ta: {
     label: "Tamil",
     ttsLocale: "ta-IN",
-    sttLocale: "en-IN",
+    sttLocale: "ta-IN",
     placeholder: "ஏதேனும் கேளுங்கள்...",
     title: "உங்கள் பசுமை இல்லம் பற்றி என்னிடம் கேளுங்கள்",
     thinking: "சிந்திக்கிறது...",
@@ -126,9 +126,9 @@ const LANGUAGES = {
 
 const WAKE_WORDS_MAP = {
   en: ["hello twin", "hi twin", "hey twin", "halo twin", "hey twins", "hello twins", "hi, twins", "twins"],
-  zh: ["小双同学", "你好小双", "嗨小双", "嘿小双"],
-  ms: ["hai maya", "hello maya", "maya", "hai si kembar", "hello si kembar", "si kembar"],
-  ta: ["hello twin", "hi twin", "hey twin", "halo twin", "hey twins", "hello twins", "twins"],
+  zh: ["小双同学", "你好小双", "嗨小双", "嘿小双", "你好 twin", "twins", "twin", "hi twin", "hello twin", "hey twin"],
+  ms: ["hi twins", "hello twins", "hey twins", "twins", "hi twin", "hello twin", "hey twin", "halo twin", "hi, twins"],
+  ta: ["hello twin", "hi twin", "hey twin", "halo twin", "hey twins", "hello twins", "twins", "ஹலோ ட்வின்", "ஹாய் ட்வின்", "ஹே ட்வின்", "ட்வின்ஸ்"],
 };
 
 
@@ -454,6 +454,31 @@ export default function AiAssistant({ onOpenHeyTwin }) {
       const utter = new SpeechSynthesisUtterance(clean);
       utter.lang = t.ttsLocale;
       utter.rate = 1.0;
+
+      const voices = window.speechSynthesis.getVoices();
+      if (voices.length > 0) {
+        let voice;
+        if (t.ttsLocale === "en-US") {
+          voice = voices.find(v => v.lang.replace('_', '-') === t.ttsLocale && v.name.includes("David"))
+               || voices.find(v => v.lang.replace('_', '-') === t.ttsLocale && !v.name.includes("Google"))
+               || voices.find(v => v.lang.replace('_', '-') === t.ttsLocale);
+        } else {
+          voice = voices.find(v => v.lang.replace('_', '-') === t.ttsLocale && v.name.includes("Google"));
+          if (!voice) voice = voices.find(v => v.lang.replace('_', '-') === t.ttsLocale);
+        }
+        
+        if (!voice && t.ttsLocale === "ms-MY") {
+          voice = voices.find(v => v.lang.startsWith("id") && v.name.includes("Google")) 
+               || voices.find(v => v.lang.startsWith("id"));
+        }
+        if (!voice && t.ttsLocale.startsWith("ta")) {
+          voice = voices.find(v => v.lang.startsWith("ta"));
+        }
+        if (voice) {
+          utter.voice = voice;
+        }
+      }
+
       window.speechSynthesis.speak(utter);
     } catch (e) {
       console.warn("TTS error:", e);

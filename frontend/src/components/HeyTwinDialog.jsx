@@ -50,9 +50,9 @@ function MarkdownLite({ text }) {
 
 const WAKE_WORDS_MAP = {
   en: ["hello twin", "hi twin", "hey twin", "halo twin", "hey twins", "hello twins", "hi, twins", "twins"],
-  zh: ["小双同学", "你好小双", "嗨小双", "嘿小双"],
-  ms: ["hai maya", "hello maya", "maya", "hai si kembar", "hello si kembar", "si kembar"],
-  ta: ["hello twin", "hi twin", "hey twin", "halo twin", "hey twins", "hello twins", "twins"],
+  zh: ["小双同学", "你好小双", "嗨小双", "嘿小双", "你好 twin", "twins", "twin", "hi twin", "hello twin", "hey twin"],
+  ms: ["hi twins", "hello twins", "hey twins", "twins", "hi twin", "hello twin", "hey twin", "halo twin", "hi, twins"],
+  ta: ["hello twin", "hi twin", "hey twin", "halo twin", "hey twins", "hello twins", "twins", "ஹலோ ட்வின்", "ஹலோ ட்வின்ஸ்", "ட்வின்", "ட்வின்ஸ்"],
 };
 
 const UI_TEXT = {
@@ -111,7 +111,7 @@ const UI_TEXT = {
     hintOpen: "untuk buka",
     hintClose: "untuk tutup",
     hintWake: "🎤 sebut \"Hey Twin\"",
-    helloTwinBtn: "👋 Hai Kembar",
+    helloTwinBtn: "👋 Hai Twin",
     quick: [
       { label: "Bagaimana rumah hijau saya?", icon: Sparkles },
       { label: "Patutkah saya siram sekarang?", icon: Lightbulb },
@@ -158,9 +158,42 @@ function speak(text, onEnd, langCode = "en-US") {
     const utter = new SpeechSynthesisUtterance(clean);
     utter.lang = langCode;
     utter.rate = 1.0;
-    if (onEnd) utter.onend = onEnd;
+
+    const voices = window.speechSynthesis.getVoices();
+    if (voices.length > 0) {
+      let voice;
+      if (langCode === "en-US") {
+        // User prefers the default Windows male voice (e.g. Microsoft David)
+        voice = voices.find(v => v.lang.replace('_', '-') === langCode && v.name.includes("David"))
+             || voices.find(v => v.lang.replace('_', '-') === langCode && !v.name.includes("Google"))
+             || voices.find(v => v.lang.replace('_', '-') === langCode);
+      } else {
+        // Prefer Google/Cloud voices for other languages as they sound more natural
+        voice = voices.find(v => v.lang.replace('_', '-') === langCode && v.name.includes("Google"));
+        if (!voice) voice = voices.find(v => v.lang.replace('_', '-') === langCode);
+      }
+      
+      // Fallback: If no Malay voice exists, Indonesian (id-ID) is very similar and widely supported
+      if (!voice && langCode === "ms-MY") {
+        voice = voices.find(v => v.lang.startsWith("id") && v.name.includes("Google")) 
+             || voices.find(v => v.lang.startsWith("id"));
+      }
+
+      if (voice) {
+        utter.voice = voice;
+      }
+    }
+
+    if (onEnd) {
+      utter.onend = onEnd;
+      utter.onerror = (e) => {
+        console.warn("TTS Error:", e);
+        onEnd();
+      };
+    }
     window.speechSynthesis.speak(utter);
-  } catch {
+  } catch (e) {
+    console.warn("TTS Catch Error:", e);
     onEnd?.();
   }
 }
@@ -193,7 +226,7 @@ export default function HeyTwinDialog({ isOpen, onClose }) {
 
     const recog = new SR();
     const savedLang = localStorage.getItem("twin_lang");
-    const localeMap = { en: "en-US", zh: "zh-CN", ms: "ms-MY", ta: "en-IN" };
+    const localeMap = { en: "en-US", zh: "zh-CN", ms: "ms-MY", ta: "ta-IN" };
     recog.lang = (savedLang && localeMap[savedLang]) ? localeMap[savedLang] : (navigator.language || "en-US");
     recog.continuous = false;
     recog.interimResults = false;
