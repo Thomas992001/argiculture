@@ -338,6 +338,7 @@ export default function AiAssistant({ onOpenHeyTwin }) {
 
   // ── Hello Twin trigger ──
   const triggerHelloTwin = async (langOverride = null) => {
+    stopAllSpeech();
     const langToUse = typeof langOverride === "string" ? langOverride : language;
     setMessages((prev) => [...prev, {
       id: Date.now(), text: "👋 Hello Twin", isUser: true,
@@ -376,6 +377,7 @@ export default function AiAssistant({ onOpenHeyTwin }) {
       return triggerHelloTwin(language);
     }
 
+    stopAllSpeech();
     setMessages((prev) => [...prev, { id: Date.now(), text, isUser: true }]);
     setLoading(true);
     try {

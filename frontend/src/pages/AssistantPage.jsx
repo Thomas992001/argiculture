@@ -30,6 +30,7 @@ import {
   Languages,
   Hand,
   Activity,
+  ImagePlus,
 } from "lucide-react";
 import { api } from "../api/client";
 import { AiInsightPanel } from "../components/AiInsightCards";
@@ -284,6 +285,8 @@ export default function AssistantPage() {
   const inputRef = useRef(null);
   const fileInputRef = useRef(null);
   const recognitionRef = useRef(null);
+  const [dragOver, setDragOver] = useState(false);
+  const [imagePreview, setImagePreview] = useState(null);
 
   // Unified helper: stop ALL speech (browser TTS + Cloud TTS audio)
   const stopAllSpeech = useCallback(() => {
@@ -545,6 +548,7 @@ export default function AssistantPage() {
   };
 
   const runTool = async (toolId) => {
+    stopAllSpeech();
     setLoading(true);
     const activeLang = voiceLang || "en";
     try {
@@ -566,34 +570,49 @@ export default function AssistantPage() {
           break;
         case "whatif":
           if (!toolInput.trim()) { setLoading(false); return; }
-          setMessages((prev) => [...prev, { id: Date.now(), text: `What if: ${toolInput}`, isUser: true }]);
-          result = await api.whatIfAnalysis(toolInput, activeLang);
-          addBotMessage(result.analysis, { powered_by: result.powered_by });
-          setToolInput("");
-          setActiveTool(null);
+          {
+            const ti = toolInput;
+            setToolInput("");
+            setActiveTool(null);
+            setMessages((prev) => [...prev, { id: Date.now(), text: `What if: ${ti}`, isUser: true }]);
+            result = await api.whatIfAnalysis(ti, activeLang);
+            addBotMessage(result.analysis, { powered_by: result.powered_by });
+          }
           break;
         case "growplan":
-          setMessages((prev) => [...prev, { id: Date.now(), text: `Create a grow plan for ${selectedCrop}`, isUser: true }]);
-          result = await api.getGrowPlan(selectedCrop, 4, activeLang);
-          addBotMessage(result.plan, { powered_by: result.powered_by });
-          setActiveTool(null);
+          {
+            const crop = selectedCrop;
+            setActiveTool(null);
+            setMessages((prev) => [...prev, { id: Date.now(), text: `Create a grow plan for ${crop}`, isUser: true }]);
+            result = await api.getGrowPlan(crop, 4, activeLang);
+            addBotMessage(result.plan, { powered_by: result.powered_by });
+          }
           break;
         case "diagnose":
           if (!imageFile) { setLoading(false); return; }
-          setMessages((prev) => [...prev, { id: Date.now(), text: `Diagnose plant image: ${imageFile.name}`, isUser: true }]);
-          result = await api.diagnosePlantImage(imageFile, toolInput, activeLang);
-          addBotMessage(result.diagnosis, { powered_by: result.powered_by });
-          setImageFile(null);
-          setToolInput("");
-          setActiveTool(null);
+          {
+            const previewUrl = imagePreview;
+            const file = imageFile;
+            const ti = toolInput;
+            setImageFile(null);
+            setImagePreview(null);
+            setToolInput("");
+            setActiveTool(null);
+            setMessages((prev) => [...prev, { id: Date.now(), text: `Diagnose plant image: ${file.name}`, isUser: true, imageUrl: previewUrl }]);
+            result = await api.diagnosePlantImage(file, ti, activeLang);
+            addBotMessage(result.diagnosis, { powered_by: result.powered_by });
+          }
           break;
         case "learn":
           if (!toolInput.trim()) { setLoading(false); return; }
-          setMessages((prev) => [...prev, { id: Date.now(), text: `Teach me about: ${toolInput}`, isUser: true }]);
-          result = await api.learnTopic(toolInput, activeLang);
-          addBotMessage(result.explanation, { powered_by: result.powered_by });
-          setToolInput("");
-          setActiveTool(null);
+          {
+            const ti = toolInput;
+            setToolInput("");
+            setActiveTool(null);
+            setMessages((prev) => [...prev, { id: Date.now(), text: `Teach me about: ${ti}`, isUser: true }]);
+            result = await api.learnTopic(ti, activeLang);
+            addBotMessage(result.explanation, { powered_by: result.powered_by });
+          }
           break;
         default:
           break;
@@ -744,7 +763,12 @@ export default function AssistantPage() {
                   msg.isUser ? "bg-blue-600/20 border border-blue-600/30" : "bg-gray-800/70 border border-gray-700/50"
                 }`}>
                   {msg.isUser ? (
-                    <p className="text-xs sm:text-sm md:text-base text-blue-200">{msg.text}</p>
+                    <div>
+                      {msg.imageUrl && (
+                        <img src={msg.imageUrl} alt="Uploaded" className="w-32 h-32 object-cover rounded-lg border border-blue-500/30 mb-2" />
+                      )}
+                      <p className="text-xs sm:text-sm md:text-base text-blue-200">{msg.text}</p>
+                    </div>
                   ) : (
                     <>
                       <MarkdownRenderer text={msg.text} />
@@ -847,19 +871,67 @@ export default function AssistantPage() {
                 </div>
               )}
               {activeTool === "diagnose" && (
-                <div className="space-y-2">
+                <div className="space-y-3">
+                  {/* Drag & Drop zone */}
+                  <div
+                    onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+                    onDragLeave={() => setDragOver(false)}
+                    onDrop={(e) => {
+                      e.preventDefault();
+                      setDragOver(false);
+                      const file = e.dataTransfer.files?.[0];
+                      if (file && file.type.startsWith("image/")) {
+                        setImageFile(file);
+                        setImagePreview(URL.createObjectURL(file));
+                      }
+                    }}
+                    onClick={() => !imageFile && fileInputRef.current?.click()}
+                    className={`relative rounded-xl border-2 border-dashed transition-all cursor-pointer ${
+                      dragOver
+                        ? "border-pink-400 bg-pink-500/10"
+                        : imageFile
+                          ? "border-pink-500/30 bg-pink-500/5"
+                          : "border-gray-700 bg-gray-800/30 hover:border-gray-600 hover:bg-gray-800/50"
+                    }`}
+                  >
+                    {imagePreview ? (
+                      <div className="flex items-center gap-3 p-3">
+                        <img src={imagePreview} alt="Preview" className="w-16 h-16 object-cover rounded-lg border border-gray-700" />
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm text-pink-400 font-medium truncate">{imageFile?.name}</p>
+                          <p className="text-[10px] text-gray-500">{imageFile ? `${(imageFile.size / 1024).toFixed(1)} KB` : ""}</p>
+                        </div>
+                        <button
+                          onClick={(e) => { e.stopPropagation(); setImageFile(null); setImagePreview(null); }}
+                          className="p-1.5 rounded-lg hover:bg-gray-700 text-gray-500 hover:text-red-400 transition-colors"
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="flex flex-col items-center gap-2 py-5">
+                        <ImagePlus size={24} className={dragOver ? "text-pink-400" : "text-gray-500"} />
+                        <p className="text-xs text-gray-400">
+                          <span className="text-pink-400 font-medium">Click to upload</span> or drag & drop
+                        </p>
+                        <p className="text-[10px] text-gray-600">JPG, PNG, WebP</p>
+                      </div>
+                    )}
+                  </div>
+                  <input ref={fileInputRef} type="file" accept="image/*" className="hidden"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (file) {
+                        setImageFile(file);
+                        setImagePreview(URL.createObjectURL(file));
+                      }
+                    }} />
                   <div className="flex gap-2 items-center">
-                    <button onClick={() => fileInputRef.current?.click()}
-                      className="flex items-center gap-2 px-3 py-2 rounded-lg bg-pink-600/20 border border-pink-600/30 text-pink-400 text-sm hover:bg-pink-600/30">
-                      <Upload size={14} /> {imageFile ? imageFile.name : "Choose Image"}
-                    </button>
-                    <input ref={fileInputRef} type="file" accept="image/*" className="hidden"
-                      onChange={(e) => setImageFile(e.target.files?.[0] || null)} />
                     <input value={toolInput} onChange={(e) => setToolInput(e.target.value)}
                       placeholder="Describe symptoms (optional)"
                       className="flex-1 bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-200 placeholder-gray-500" />
                     <button onClick={() => runTool("diagnose")} disabled={loading || !imageFile} className="px-3 py-2 rounded-lg bg-pink-600 hover:bg-pink-500 disabled:bg-gray-700 text-white text-sm">Diagnose</button>
-                    <button onClick={() => setActiveTool(null)} className="px-2 text-gray-500 hover:text-gray-300"><XCircle size={16} /></button>
+                    <button onClick={() => { setActiveTool(null); setImageFile(null); setImagePreview(null); }} className="px-2 text-gray-500 hover:text-gray-300"><XCircle size={16} /></button>
                   </div>
                 </div>
               )}
