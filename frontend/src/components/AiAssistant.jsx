@@ -551,7 +551,7 @@ export default function AiAssistant({ onOpenHeyTwin }) {
                 <Sparkles size={16} className="text-greenhouse-400" />
               </div>
               <div>
-                <h3 className="text-sm font-semibold text-white">GreenMind AI</h3>
+                <h3 className="text-sm font-semibold text-white">TwinMind AI</h3>
                 <p className="text-[10px] text-greenhouse-400 flex items-center gap-1">
                   <Zap size={8} /> {t.agentMode}
                 </p>

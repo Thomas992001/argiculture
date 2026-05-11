@@ -10,7 +10,7 @@ The system is deployed as a single container on **Google Cloud Run**, backed by 
 
 ## Highlights
 
-- **Agentic AI (GreenMind)** — Chat with Google Gemini about your crop, ask what-if questions, generate daily reports and grow plans, and diagnose plant photos with Gemini Vision.
+- **Agentic AI (TwinMind)** — Chat with Google Gemini about your crop, ask what-if questions, generate daily reports and grow plans, and diagnose plant photos with Gemini Vision.
 - **Hey Twin voice assistant** — Always-on wake-word detection ("Hey Twin", "你好 Twin", "Halo Twin"). Natural commands such as *"water Bed A for 30 seconds"* are parsed into structured intent, proposed to the user, and executed after confirmation.
 - **Cloud-synced in real time** — Firebase Realtime Database streams sensor data; Firestore syncs actuator state so the frontend and backend stay coherent across devices.
 - **Closed-loop automation** — Weather-aware auto-irrigation: if it is hot, soil moisture is low, and no rain is expected, the backend pulses the correct pump for that bed.
@@ -131,7 +131,7 @@ backend/                      FastAPI app, AI, twin state, cloud sync
     twin.py                   /api/twin
     control.py                /api/control
     analytics.py              /api/analytics (Gemini-enhanced)
-    advisor.py                /api/advisor (GreenMind chat, vision, reports)
+    advisor.py                /api/advisor (TwinMind chat, vision, reports)
   services/
     twin_state.py             Digital twin state + Firestore control listener
     rules_engine.py           Threshold alert engine
@@ -246,7 +246,7 @@ Interactive OpenAPI docs are always available at `/docs`.
 
 - **Model**: Google Gemini via Vertex AI. The default is `gemini-3-flash-preview` with an automatic fallback chain of `gemini-2.5-flash` then `gemini-2.5-flash-lite`. Per-model rate-limit cooldowns are tracked in memory.
 - **Grounding**: every call rebuilds a live sensor context snapshot — all thirteen sensors, actuator states, active alerts, derived VPD and dew point, outdoor weather, and the active crop profile — and injects it as the prompt prefix.
-- **Persona**: `GreenMind`, defined in `backend/services/gemini_advisor.py`. It answers as an expert agronomist, always references actual sensor numbers, and formats with markdown.
+- **Persona**: `TwinMind`, defined in `backend/services/gemini_advisor.py`. It answers as an expert agronomist, always references actual sensor numbers, and formats with markdown.
 - **Agentic flow** (`agent_executor.py`):
   1. Gemini parses the user's message into a structured intent (`control_actuator`, `emergency_stop`, `optimize_environment`, `query_status`, `greeting`, `general_chat`).
   2. Actuators are resolved through a multilingual alias map (English, Chinese, Bahasa Melayu, Tamil).

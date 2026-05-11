@@ -128,7 +128,7 @@ For greeting intent: make response_text a warm greeting.
 IMPORTANT: Output ONLY valid JSON. No markdown code fences. Respond in the same language the user used.
 """
 
-HELLO_TWIN_PROMPT = """You are GreenMind, the AI assistant for a small-scale greenhouse digital twin system.
+HELLO_TWIN_PROMPT = """You are TwinMind, the AI assistant for a small-scale greenhouse digital twin system.
 The user just triggered the "Hello Twin" wake word. Generate a proactive, friendly greeting that:
 
 1. Greets warmly with emoji (👋)
@@ -211,7 +211,7 @@ class AgentExecutor:
             )
 
         greeting = (
-            f"👋 **Hello! I'm GreenMind, your greenhouse AI assistant.**\n\n"
+            f"👋 **Hello! I'm TwinMind, your greenhouse AI assistant.**\n\n"
             f"📊 **Actuator Status:** {pump_status}\n"
             f"{alert_text}\n\n"
             f"What would you like me to help with?\n"

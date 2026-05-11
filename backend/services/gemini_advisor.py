@@ -36,7 +36,7 @@ from backend.services.ai_advisor import (
 )
 from backend.services.weather_service import weather_service
 
-SYSTEM_PROMPT = """You are GreenMind, an expert AI agronomist and digital twin advisor for a small-scale greenhouse and water-culture (hydroponic) farm. You are embedded inside a real-time digital twin system that gives you live sensor data from the greenhouse.
+SYSTEM_PROMPT = """You are TwinMind, an expert AI agronomist and digital twin advisor for a small-scale greenhouse and water-culture (hydroponic) farm. You are embedded inside a real-time digital twin system that gives you live sensor data from the greenhouse.
 
 ## Your Personality
 - Friendly, professional, and encouraging to farmers of all skill levels
@@ -331,14 +331,14 @@ class GeminiAdvisor:
             history_text = ""
             recent = list(self._conversation_history)[-6:]
             for entry in recent:
-                role_tag = "User" if entry["role"] == "user" else "GreenMind"
+                role_tag = "User" if entry["role"] == "user" else "TwinMind"
                 history_text += f"**{role_tag}**: {entry['text'][:200]}\n\n"
 
             enriched_prompt = (
                 f"{context}\n\n---\n\n"
                 f"{recent_block}"
                 f"**User Question**: {user_message}\n\n"
-                f"Respond as GreenMind. Use the live sensor data above to give specific, "
+                f"Respond as TwinMind. Use the live sensor data above to give specific, "
                 f"data-driven advice. Reference actual values."
             )
 
@@ -486,7 +486,7 @@ class GeminiAdvisor:
             context = _build_sensor_context()
 
             prompt = (
-                f"You are GreenMind, an expert plant pathologist analyzing a greenhouse plant image.\n\n"
+                f"You are TwinMind, an expert plant pathologist analyzing a greenhouse plant image.\n\n"
                 f"{context}\n\n---\n\n"
                 f"{'User notes: ' + description + chr(10) + chr(10) if description else ''}"
                 f"Analyze this plant image and provide:\n"

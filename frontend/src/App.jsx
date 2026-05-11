@@ -12,6 +12,7 @@ import AnalyticsPage from "./pages/AnalyticsPage";
 import GreenhousePage from "./pages/GreenhousePage";
 import AssistantPage from "./pages/AssistantPage";
 import LoginPage from "./pages/LoginPage";
+import TermsPage from "./pages/TermsPage";
 import AiAssistant from "./components/AiAssistant";
 import HeyTwinDialog from "./components/HeyTwinDialog";
 import { AlertsProvider } from "./contexts/AlertsProvider";
@@ -209,6 +210,7 @@ export default function App() {
           <Route path="/control" element={<ControlPage />} />
           <Route path="/analytics" element={<AnalyticsPage />} />
           <Route path="/assistant" element={<AssistantPage />} />
+          <Route path="/terms" element={<TermsPage />} />
         </Route>
 
         <Route path="*" element={<Navigate to="/" replace />} />

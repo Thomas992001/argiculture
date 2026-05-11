@@ -509,7 +509,7 @@ class AIAdvisor:
         if any(w in q for w in ["hello", "hi", "hey", "help"]):
             return ChatResponse(
                 answer=(
-                    f"Hello! I'm your greenhouse AI assistant. I can help you with:\n\n"
+                    f"Hello! I'm TwinMind, your greenhouse AI assistant. I can help you with:\n\n"
                     f"- **Current conditions**: Ask 'How is my greenhouse doing?'\n"
                     f"- **Specific sensors**: Ask about temperature, humidity, pH, EC, etc.\n"
                     f"- **VPD**: Ask 'What is VPD?' or 'Calculate VPD'\n"

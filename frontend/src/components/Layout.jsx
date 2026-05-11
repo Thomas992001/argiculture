@@ -7,6 +7,7 @@ import {
   SlidersHorizontal,
   BarChart3,
   Bot,
+  ShieldCheck,
   Wifi,
   WifiOff,
   LogOut,
@@ -19,6 +20,7 @@ const NAV_ITEMS = [
   { to: "/control", icon: SlidersHorizontal, label: "Control" },
   { to: "/analytics", icon: BarChart3, label: "Analytics" },
   { to: "/assistant", icon: Bot, label: "AI Assistant" },
+  { to: "/terms", icon: ShieldCheck, label: "Terms & Conditions" },
 ];
 
 export default function Layout({ onLogout }) {
@@ -50,7 +52,7 @@ export default function Layout({ onLogout }) {
       <aside className="hidden md:flex w-64 bg-gray-900 border-r border-gray-800 flex-col shrink-0 z-10">
         <div className="p-5 border-b border-gray-800">
           <h1 className="text-xl font-bold text-greenhouse-400">
-            Digital Twin
+            AgriTwin-MRV
           </h1>
           <p className="text-xs text-gray-500 mt-1">
             Greenhouse & Water-Culture Farm
