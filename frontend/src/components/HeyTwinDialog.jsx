@@ -17,14 +17,21 @@ import { auth, db } from "../firebase";
 import { doc, setDoc } from "firebase/firestore";
 import "../styles/HeyTwinDialog.css";
 
-// Module-level ref for cloud TTS audio (so speak() can access it)
+// Module-level refs
 let _cloudAudio = null;
+let _activeCallback = null;
 
 // Unified helper: stop ALL speech (browser TTS + Cloud TTS audio)
 function stopAllSpeech() {
+  _activeCallback = null; // CRITICAL: Nullify any pending callbacks before cancelling
   try { window.speechSynthesis?.cancel(); } catch {}
   if (_cloudAudio) {
-    try { _cloudAudio.pause(); _cloudAudio.currentTime = 0; } catch {}
+    try { 
+      _cloudAudio.onended = null;
+      _cloudAudio.onerror = null;
+      _cloudAudio.pause(); 
+      _cloudAudio.currentTime = 0; 
+    } catch {}
     _cloudAudio = null;
   }
 }
@@ -164,6 +171,7 @@ function speak(text, onEnd, langCode = "en-US") {
 
   // Always interrupt any ongoing speech before starting new one
   stopAllSpeech();
+  _activeCallback = onEnd;
 
   // For Tamil: use Google Cloud TTS via backend (browser usually has no Tamil voice)
   if (langCode.startsWith("ta")) {
@@ -174,12 +182,29 @@ function speak(text, onEnd, langCode = "en-US") {
       .slice(0, 500);
     api.cloudTTS(clean, "ta")
       .then((audioUrl) => {
+        if (!_activeCallback) return; // Cancelled
         const audio = new Audio(audioUrl);
         _cloudAudio = audio;
-        audio.playbackRate = 1.0; // Cloud TTS already set to 1.25x
-        audio.onended = () => { URL.revokeObjectURL(audioUrl); _cloudAudio = null; onEnd?.(); };
-        audio.onerror = () => { URL.revokeObjectURL(audioUrl); _cloudAudio = null; onEnd?.(); };
-        audio.play().catch(() => onEnd?.());
+        audio.playbackRate = 1.0; 
+        audio.onended = () => { 
+          URL.revokeObjectURL(audioUrl); 
+          _cloudAudio = null; 
+          const cb = _activeCallback;
+          _activeCallback = null;
+          cb?.(); 
+        };
+        audio.onerror = () => { 
+          URL.revokeObjectURL(audioUrl); 
+          _cloudAudio = null; 
+          const cb = _activeCallback;
+          _activeCallback = null;
+          cb?.(); 
+        };
+        audio.play().catch(() => {
+          const cb = _activeCallback;
+          _activeCallback = null;
+          cb?.();
+        });
       })
       .catch((e) => {
         console.warn("Cloud TTS failed, falling back to browser:", e);
@@ -228,16 +253,27 @@ function _browserSpeak(text, onEnd, langCode) {
     }
 
     if (onEnd) {
-      utter.onend = onEnd;
+      utter.onend = () => {
+        if (_activeCallback) {
+          _activeCallback = null;
+          onEnd();
+        }
+      };
       utter.onerror = (e) => {
         console.warn("TTS Error:", e);
-        onEnd();
+        if (_activeCallback) {
+          _activeCallback = null;
+          onEnd();
+        }
       };
     }
     window.speechSynthesis.speak(utter);
   } catch (e) {
     console.warn("TTS Catch Error:", e);
-    onEnd?.();
+    if (_activeCallback) {
+      _activeCallback = null;
+      onEnd?.();
+    }
   }
 }
 
@@ -337,19 +373,35 @@ export default function HeyTwinDialog({ isOpen, onClose }) {
           };
           const ttsLangs = { en: "en-US", zh: "zh-CN", ms: "ms-MY", ta: "ta-IN" };
           speak(greetings[lang] || greetings.en, () => {
-            // After TTS finishes, auto-start listening
-            startListening();
-          }, ttsLangs[lang] || "en-US");
+        // Only start listening if still open
+        if (isComponentOpen.current) {
+          startListening();
         }
-      }, 400);
-
-      return () => clearTimeout(timer);
-    } else {
-      // Cleanup on close
-      stopListening();
-      stopAllSpeech();
+      }, ttsLangs[lang] || "en-US");
     }
-  }, [isOpen, startListening, stopListening]);
+  }, 400);
+
+  return () => {
+    clearTimeout(timer);
+    stopListening();
+    stopAllSpeech();
+  };
+} else {
+  // Cleanup on close
+  stopListening();
+  stopAllSpeech();
+}
+}, [isOpen, startListening, stopListening]);
+
+// Track open state in a ref for use in async callbacks
+const isComponentOpen = useRef(isOpen);
+useEffect(() => {
+isComponentOpen.current = isOpen;
+if (!isOpen) {
+  stopListening();
+  stopAllSpeech();
+}
+}, [isOpen, stopListening]);
 
   // Scroll response into view
   useEffect(() => {
@@ -388,16 +440,21 @@ export default function HeyTwinDialog({ isOpen, onClose }) {
     const langToUse = langOverride || localStorage.getItem("twin_lang") || "en";
     try {
       const res = await api.helloTwin(langToUse);
+      if (!isComponentOpen.current) return; // Stop if closed
+
       setResponse(res);
       const ttsLangs = { en: "en-US", zh: "zh-CN", ms: "ms-MY", ta: "ta-IN" };
       // Speak the response, then auto-listen for follow-up
-      speak(res.answer, () => startListening(), ttsLangs[langToUse] || "en-US");
+      speak(res.answer, () => {
+        if (isComponentOpen.current) startListening();
+      }, ttsLangs[langToUse] || "en-US");
     } catch {
+      if (!isComponentOpen.current) return;
       const lang = localStorage.getItem("twin_lang") || "en";
       const t = UI_TEXT[lang] || UI_TEXT.en;
       setResponse({ answer: t.connError, powered_by: "error" });
     } finally {
-      setLoading(false);
+      if (isComponentOpen.current) setLoading(false);
     }
   };
 
@@ -421,22 +478,28 @@ export default function HeyTwinDialog({ isOpen, onClose }) {
     try {
       const lang = localStorage.getItem("twin_lang") || "en";
       const res = await api.agentChat(msg, "default", lang);
+      if (!isComponentOpen.current) return; // Stop if closed
+
       setResponse(res);
       const ttsLangs = { en: "en-US", zh: "zh-CN", ms: "ms-MY", ta: "ta-IN" };
       // Speak the response, then auto-listen for follow-up
-      speak(res.answer, () => startListening(), ttsLangs[lang] || "en-US");
+      speak(res.answer, () => {
+        if (isComponentOpen.current) startListening();
+      }, ttsLangs[lang] || "en-US");
     } catch {
+      if (!isComponentOpen.current) return;
       const lang = localStorage.getItem("twin_lang") || "en";
       const t = UI_TEXT[lang] || UI_TEXT.en;
       setResponse({ answer: t.error, powered_by: "error" });
     } finally {
-      setLoading(false);
+      if (isComponentOpen.current) setLoading(false);
     }
   };
 
   // ── Toggle voice ──
   const toggleListening = () => {
     unlockAudio();
+    stopAllSpeech(); // Stop any ongoing speech when user wants to talk
     if (listening) {
       stopListening();
     } else {
@@ -450,6 +513,8 @@ export default function HeyTwinDialog({ isOpen, onClose }) {
     try {
       const activeLang = localStorage.getItem("twin_lang") || "en";
       const res = await api.confirmAction(actionId, activeLang);
+      if (!isComponentOpen.current) return;
+
       setResponse((prev) => ({
         ...prev,
         answer: res.answer,
@@ -458,11 +523,13 @@ export default function HeyTwinDialog({ isOpen, onClose }) {
         action_id: null,
       }));
       const ttsLangs = { en: "en-US", zh: "zh-CN", ms: "ms-MY", ta: "ta-IN" };
-      speak(res.answer, null, ttsLangs[activeLang] || "en-US");
+      speak(res.answer, () => {
+        if (isComponentOpen.current) startListening();
+      }, ttsLangs[activeLang] || "en-US");
     } catch {
       // keep current response
     } finally {
-      setConfirming(false);
+      if (isComponentOpen.current) setConfirming(false);
     }
   };
 
