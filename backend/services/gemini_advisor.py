@@ -625,6 +625,8 @@ class GeminiAdvisor:
             response = await self._generate_async(prompt, {
                 "response_mime_type": "application/json",
             })
+            if not response:
+                return None
             text = response.strip()
             insights = json.loads(text)
             if isinstance(insights, dict) and "insights" in insights:
@@ -660,6 +662,8 @@ class GeminiAdvisor:
 
         try:
             response = await self._generate_async(prompt)
+            if not response:
+                return None
             result = {"summary": response.strip(), "powered_by": "google_gemini"}
             self._set_cache("summary", result)
             return result
@@ -701,6 +705,8 @@ class GeminiAdvisor:
 
         try:
             response = await self._generate_async(prompt)
+            if not response:
+                return None
             result = {"analysis": response.strip(), "powered_by": "google_gemini"}
             self._set_cache(cache_key, result)
             return result
@@ -735,6 +741,8 @@ class GeminiAdvisor:
 
         try:
             response = await self._generate_async(prompt)
+            if not response:
+                return None
             result = {"analysis": response.strip(), "powered_by": "google_gemini"}
             self._set_cache("anomalies", result)
             return result
@@ -772,6 +780,8 @@ class GeminiAdvisor:
 
         try:
             response = await self._generate_async(prompt)
+            if not response:
+                return None
             result = {"interpretation": response.strip(), "powered_by": "google_gemini"}
             self._set_cache(cache_key, result)
             return result
@@ -823,7 +833,9 @@ class GeminiAdvisor:
                 if current_model != self._model_name:
                     print(f"[GeminiAdvisor] Succeeded with fallback model: {current_model}")
                 self._active_model = current_model
-                return response.text
+                if not response or not hasattr(response, "text"):
+                    return ""
+                return response.text or ""
             except Exception as e:
                 last_error = e
                 self._handle_rate_limit(e, model)

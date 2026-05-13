@@ -20,10 +20,12 @@ import "../styles/HeyTwinDialog.css";
 // Module-level refs
 let _cloudAudio = null;
 let _activeCallback = null;
+let _isSpeaking = false; // Tracks if AI is currently talking (TTS)
 
 // Unified helper: stop ALL speech (browser TTS + Cloud TTS audio)
 function stopAllSpeech() {
   _activeCallback = null; // CRITICAL: Nullify any pending callbacks before cancelling
+  _isSpeaking = false;
   try { window.speechSynthesis?.cancel(); } catch {}
   if (_cloudAudio) {
     try { 
@@ -180,6 +182,7 @@ function speak(text, onEnd, langCode = "en-US") {
       .replace(/\n{2,}/g, ". ")
       .replace(/---/g, "")
       .slice(0, 500);
+    _isSpeaking = true;
     api.cloudTTS(clean, "ta")
       .then((audioUrl) => {
         if (!_activeCallback) return; // Cancelled
@@ -189,6 +192,7 @@ function speak(text, onEnd, langCode = "en-US") {
         audio.onended = () => { 
           URL.revokeObjectURL(audioUrl); 
           _cloudAudio = null; 
+          _isSpeaking = false;
           const cb = _activeCallback;
           _activeCallback = null;
           cb?.(); 
@@ -196,11 +200,13 @@ function speak(text, onEnd, langCode = "en-US") {
         audio.onerror = () => { 
           URL.revokeObjectURL(audioUrl); 
           _cloudAudio = null; 
+          _isSpeaking = false;
           const cb = _activeCallback;
           _activeCallback = null;
           cb?.(); 
         };
         audio.play().catch(() => {
+          _isSpeaking = false;
           const cb = _activeCallback;
           _activeCallback = null;
           cb?.();
@@ -208,16 +214,19 @@ function speak(text, onEnd, langCode = "en-US") {
       })
       .catch((e) => {
         console.warn("Cloud TTS failed, falling back to browser:", e);
+        _isSpeaking = false;
         _browserSpeak(text, onEnd, langCode);
       });
     return;
   }
 
+  _isSpeaking = true;
   _browserSpeak(text, onEnd, langCode);
 }
 
 function _browserSpeak(text, onEnd, langCode) {
   if (!("speechSynthesis" in window)) {
+    _isSpeaking = false;
     onEnd?.();
     return;
   }
@@ -254,6 +263,7 @@ function _browserSpeak(text, onEnd, langCode) {
 
     if (onEnd) {
       utter.onend = () => {
+        _isSpeaking = false;
         if (_activeCallback) {
           _activeCallback = null;
           onEnd();
@@ -261,6 +271,7 @@ function _browserSpeak(text, onEnd, langCode) {
       };
       utter.onerror = (e) => {
         console.warn("TTS Error:", e);
+        _isSpeaking = false;
         if (_activeCallback) {
           _activeCallback = null;
           onEnd();
@@ -270,6 +281,7 @@ function _browserSpeak(text, onEnd, langCode) {
     window.speechSynthesis.speak(utter);
   } catch (e) {
     console.warn("TTS Catch Error:", e);
+    _isSpeaking = false;
     if (_activeCallback) {
       _activeCallback = null;
       onEnd?.();
@@ -297,123 +309,40 @@ export default function HeyTwinDialog({ isOpen, onClose }) {
   const recognitionRef = useRef(null);
   const responseRef = useRef(null);
   const hasGreetedRef = useRef(false);
+  const autoCloseTimerRef = useRef(null);
+  const responseStateRef = useRef(response);
+  const abortControllerRef = useRef(null);
+  const loadingRef = useRef(loading);
+  const confirmingRef = useRef(confirming);
 
-  // ── Create a fresh speech recognition instance each time we need one ──
-  const createRecognition = useCallback(() => {
-    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-    if (!SR) return null;
+  useEffect(() => {
+    responseStateRef.current = response;
+  }, [response]);
 
-    const recog = new SR();
-    const savedLang = localStorage.getItem("twin_lang");
-    const localeMap = { en: "en-US", zh: "zh-CN", ms: "ms-MY", ta: "ta-IN" };
-    recog.lang = (savedLang && localeMap[savedLang]) ? localeMap[savedLang] : (navigator.language || "en-US");
-    recog.continuous = false;
-    recog.interimResults = false;
+  useEffect(() => {
+    loadingRef.current = loading;
+  }, [loading]);
 
-    recog.onresult = (event) => {
-      const transcript = event.results[0]?.[0]?.transcript?.trim();
-      if (transcript) {
-        const lower = transcript.toLowerCase();
-        const activeLang = localStorage.getItem("twin_lang") || "en";
-        const triggers = WAKE_WORDS_MAP[activeLang] || WAKE_WORDS_MAP.en;
-        if (triggers.some((t) => lower.includes(t))) {
-          triggerHelloTwin(activeLang);
-        } else {
-          sendMessage(transcript);
-        }
-      }
-    };
-    recog.onerror = () => setListening(false);
-    recog.onend = () => setListening(false);
-
-    return recog;
-  }, []);
-
-  // ── Start listening (creates fresh instance each time) ──
-  const startListening = useCallback(() => {
-    // Abort any existing
-    try { recognitionRef.current?.abort(); } catch {}
-    
-    const recog = createRecognition();
-    if (!recog) return;
-    recognitionRef.current = recog;
-    
-    try {
-      recog.start();
-      setListening(true);
-    } catch {
-      setListening(false);
-    }
-  }, [createRecognition]);
+  useEffect(() => {
+    confirmingRef.current = confirming;
+  }, [confirming]);
 
   const stopListening = useCallback(() => {
     try { recognitionRef.current?.stop(); } catch {}
     setListening(false);
   }, []);
 
-  // ── On open: greet with TTS then auto-listen ──
-  useEffect(() => {
-    if (isOpen) {
-      setClosing(false);
-      setResponse(null);
-      setInput("");
-      setListening(false);
-      hasGreetedRef.current = false;
-
-      // Greet then listen
-      const timer = setTimeout(() => {
-        if (!hasGreetedRef.current) {
-          hasGreetedRef.current = true;
-          const lang = localStorage.getItem("twin_lang") || "en";
-          const greetings = {
-            en: "What can I help you with?",
-            zh: "有什么我可以帮你的吗？",
-            ms: "Apa yang boleh saya bantu?",
-            ta: "நான் உங்களுக்கு எப்படி உதவ முடியும்?"
-          };
-          const ttsLangs = { en: "en-US", zh: "zh-CN", ms: "ms-MY", ta: "ta-IN" };
-          speak(greetings[lang] || greetings.en, () => {
-        // Only start listening if still open
-        if (isComponentOpen.current) {
-          startListening();
-        }
-      }, ttsLangs[lang] || "en-US");
-    }
-  }, 400);
-
-  return () => {
-    clearTimeout(timer);
-    stopListening();
-    stopAllSpeech();
-  };
-} else {
-  // Cleanup on close
-  stopListening();
-  stopAllSpeech();
-}
-}, [isOpen, startListening, stopListening]);
-
-// Track open state in a ref for use in async callbacks
-const isComponentOpen = useRef(isOpen);
-useEffect(() => {
-isComponentOpen.current = isOpen;
-if (!isOpen) {
-  stopListening();
-  stopAllSpeech();
-}
-}, [isOpen, stopListening]);
-
-  // Scroll response into view
-  useEffect(() => {
-    if (response) {
-      responseRef.current?.scrollTo({ top: 0, behavior: "smooth" });
-    }
-  }, [response]);
-
   // ── Close with animation ──
   const handleClose = useCallback(() => {
     stopListening();
     stopAllSpeech();
+    // Stop AI from thinking/fetching
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+      abortControllerRef.current = null;
+    }
+    if (autoCloseTimerRef.current) clearTimeout(autoCloseTimerRef.current);
+    
     setClosing(true);
     setTimeout(() => {
       setClosing(false);
@@ -421,40 +350,39 @@ if (!isOpen) {
     }, 200);
   }, [onClose, stopListening]);
 
-  // ESC to close
-  useEffect(() => {
-    if (!isOpen) return;
-    const handleKey = (e) => {
-      if (e.key === "Escape") handleClose();
-    };
-    window.addEventListener("keydown", handleKey);
-    return () => window.removeEventListener("keydown", handleKey);
-  }, [isOpen, handleClose]);
-
   // ── Hello Twin ──
   const triggerHelloTwin = async (langOverride = null) => {
     stopListening();
     stopAllSpeech();
+    if (autoCloseTimerRef.current) clearTimeout(autoCloseTimerRef.current);
+
     setLoading(true);
     setResponse(null);
     const langToUse = langOverride || localStorage.getItem("twin_lang") || "en";
+    
+    abortControllerRef.current = new AbortController();
+
     try {
-      const res = await api.helloTwin(langToUse);
-      if (!isComponentOpen.current) return; // Stop if closed
+      const res = await api.helloTwin(langToUse, abortControllerRef.current.signal);
+      if (!isComponentOpen.current) return;
 
       setResponse(res);
       const ttsLangs = { en: "en-US", zh: "zh-CN", ms: "ms-MY", ta: "ta-IN" };
       // Speak the response, then auto-listen for follow-up
       speak(res.answer, () => {
-        if (isComponentOpen.current) startListening();
+        if (isComponentOpen.current) {
+          setTimeout(() => { if (isComponentOpen.current) startListening(); }, 500);
+        }
       }, ttsLangs[langToUse] || "en-US");
-    } catch {
+    } catch (err) {
+      if (err.name === 'AbortError') return;
       if (!isComponentOpen.current) return;
       const lang = localStorage.getItem("twin_lang") || "en";
       const t = UI_TEXT[lang] || UI_TEXT.en;
       setResponse({ answer: t.connError, powered_by: "error" });
     } finally {
       if (isComponentOpen.current) setLoading(false);
+      abortControllerRef.current = null;
     }
   };
 
@@ -475,35 +403,32 @@ if (!isOpen) {
 
     setLoading(true);
     setResponse(null);
+    if (autoCloseTimerRef.current) clearTimeout(autoCloseTimerRef.current);
+    
+    abortControllerRef.current = new AbortController();
+
     try {
       const lang = localStorage.getItem("twin_lang") || "en";
-      const res = await api.agentChat(msg, "default", lang);
-      if (!isComponentOpen.current) return; // Stop if closed
+      const res = await api.agentChat(msg, "default", lang, abortControllerRef.current.signal);
+      if (!isComponentOpen.current) return;
 
       setResponse(res);
       const ttsLangs = { en: "en-US", zh: "zh-CN", ms: "ms-MY", ta: "ta-IN" };
       // Speak the response, then auto-listen for follow-up
       speak(res.answer, () => {
-        if (isComponentOpen.current) startListening();
+        if (isComponentOpen.current) {
+          setTimeout(() => { if (isComponentOpen.current) startListening(); }, 500);
+        }
       }, ttsLangs[lang] || "en-US");
-    } catch {
+    } catch (err) {
+      if (err.name === 'AbortError') return;
       if (!isComponentOpen.current) return;
       const lang = localStorage.getItem("twin_lang") || "en";
       const t = UI_TEXT[lang] || UI_TEXT.en;
       setResponse({ answer: t.error, powered_by: "error" });
     } finally {
       if (isComponentOpen.current) setLoading(false);
-    }
-  };
-
-  // ── Toggle voice ──
-  const toggleListening = () => {
-    unlockAudio();
-    stopAllSpeech(); // Stop any ongoing speech when user wants to talk
-    if (listening) {
-      stopListening();
-    } else {
-      startListening();
+      abortControllerRef.current = null;
     }
   };
 
@@ -512,7 +437,9 @@ if (!isOpen) {
     setConfirming(true);
     try {
       const activeLang = localStorage.getItem("twin_lang") || "en";
-      const res = await api.confirmAction(actionId, activeLang);
+      
+      abortControllerRef.current = new AbortController();
+      const res = await api.confirmAction(actionId, activeLang, abortControllerRef.current.signal);
       if (!isComponentOpen.current) return;
 
       setResponse((prev) => ({
@@ -524,12 +451,16 @@ if (!isOpen) {
       }));
       const ttsLangs = { en: "en-US", zh: "zh-CN", ms: "ms-MY", ta: "ta-IN" };
       speak(res.answer, () => {
-        if (isComponentOpen.current) startListening();
+        if (isComponentOpen.current) {
+          setTimeout(() => { if (isComponentOpen.current) startListening(); }, 500);
+        }
       }, ttsLangs[activeLang] || "en-US");
-    } catch {
+    } catch (err) {
+      if (err.name === 'AbortError') return;
       // keep current response
     } finally {
       if (isComponentOpen.current) setConfirming(false);
+      abortControllerRef.current = null;
     }
   };
 
@@ -542,6 +473,200 @@ if (!isOpen) {
       action_id: null,
       answer: prev.answer + "\n\n" + t.cancelled,
     }));
+
+    // Start auto-close timer after rejection since mic doesn't restart
+    if (autoCloseTimerRef.current) clearTimeout(autoCloseTimerRef.current);
+    autoCloseTimerRef.current = setTimeout(() => {
+      if (isComponentOpen.current) handleClose();
+    }, 5000);
+  };
+
+  // ── Create a fresh speech recognition instance each time we need one ──
+  const createRecognition = useCallback(() => {
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SR) return null;
+
+    const recog = new SR();
+    const savedLang = localStorage.getItem("twin_lang");
+    const localeMap = { en: "en-US", zh: "zh-CN", ms: "ms-MY", ta: "ta-IN" };
+    recog.lang = (savedLang && localeMap[savedLang]) ? localeMap[savedLang] : (navigator.language || "en-US");
+    recog.continuous = false;
+    recog.interimResults = true;
+
+    recog.onresult = (event) => {
+      // Clear auto-close timer on any activity (interim or final)
+      if (autoCloseTimerRef.current) clearTimeout(autoCloseTimerRef.current);
+
+      const isFinal = event.results[event.results.length - 1].isFinal;
+      if (!isFinal) return; // Wait for final transcript for commands
+
+      const transcript = event.results[0]?.[0]?.transcript?.trim();
+      if (transcript) {
+        const lower = transcript.toLowerCase();
+        // Hands-free confirmation/rejection
+        const currentRes = responseStateRef.current;
+        if (currentRes && currentRes.actions_proposed?.length > 0 && currentRes.action_id) {
+          const confirmWords = ["yes", "confirm", "ok", "sure", "确认", "ya", "ya betul", "ஆமாம்", "சரி"];
+          const rejectWords = ["no", "reject", "cancel", "decline", "拒绝", "tak", "jangan", "இல்லை", "வேண்டாம்"];
+          if (confirmWords.some(w => lower.includes(w))) {
+            handleConfirm(currentRes.action_id);
+            return;
+          } else if (rejectWords.some(w => lower.includes(w))) {
+            handleReject();
+            return;
+          }
+        }
+
+        const activeLang = localStorage.getItem("twin_lang") || "en";
+        const triggers = WAKE_WORDS_MAP[activeLang] || WAKE_WORDS_MAP.en;
+        if (triggers.some((t) => lower.includes(t))) {
+          triggerHelloTwin(activeLang);
+        } else {
+          sendMessage(transcript);
+        }
+      }
+    };
+    recog.onsoundstart = () => {
+      if (autoCloseTimerRef.current) clearTimeout(autoCloseTimerRef.current);
+    };
+    recog.onspeechstart = () => {
+      if (autoCloseTimerRef.current) clearTimeout(autoCloseTimerRef.current);
+    };
+
+    recog.onerror = () => setListening(false);
+    recog.onend = () => {
+      setListening(false);
+      // Use refs to ensure we have the absolute latest state
+      // If we finished listening and we are NOT currently waiting for an AI response or AI is talking,
+      // start a 5s countdown to close the dialog due to inactivity.
+      if (!loadingRef.current && !confirmingRef.current && !_isSpeaking && isComponentOpen.current) {
+        if (autoCloseTimerRef.current) clearTimeout(autoCloseTimerRef.current);
+        autoCloseTimerRef.current = setTimeout(() => {
+          // Final safety check: don't close if we've started something else in the meantime
+          if (
+            isComponentOpen.current && 
+            !loadingRef.current && 
+            !confirmingRef.current && 
+            !_isSpeaking &&
+            !recognitionRef.current?.active // Check if mic is actually active
+          ) {
+            handleClose();
+          }
+        }, 5000);
+      }
+    };
+
+    return recog;
+  }, [loading, handleClose]);
+
+  const startListening = useCallback(() => {
+    // Abort any existing
+    try { recognitionRef.current?.abort(); } catch {}
+    
+    const recog = createRecognition();
+    if (!recog) return;
+    recognitionRef.current = recog;
+    
+    if (autoCloseTimerRef.current) clearTimeout(autoCloseTimerRef.current);
+
+    try {
+      recog.start();
+      setListening(true);
+
+      // Auto-close if no speech is detected within 6 seconds
+      if (autoCloseTimerRef.current) clearTimeout(autoCloseTimerRef.current);
+      autoCloseTimerRef.current = setTimeout(() => {
+        if (isComponentOpen.current) {
+          handleClose();
+        }
+      }, 6000);
+
+    } catch {
+      setListening(false);
+    }
+  }, [createRecognition, handleClose]);
+
+  // ── On open: greet with TTS then auto-listen ──
+  useEffect(() => {
+    if (isOpen) {
+      if (hasGreetedRef.current) return; // Fix: prevent greeting from running again if already greeted
+
+      setClosing(false);
+      setResponse(null);
+      setInput("");
+      setListening(false);
+      hasGreetedRef.current = false;
+
+      // Greet then listen
+      const timer = setTimeout(() => {
+        if (!hasGreetedRef.current) {
+          hasGreetedRef.current = true;
+          const lang = localStorage.getItem("twin_lang") || "en";
+          const greetings = {
+            en: "What can I help you with?",
+            zh: "有什么我可以帮你的吗？",
+            ms: "Apa yang boleh saya bantu?",
+            ta: "நான் உங்களுக்கு எப்படி உதவ முடியும்?"
+          };
+          const ttsLangs = { en: "en-US", zh: "zh-CN", ms: "ms-MY", ta: "ta-IN" };
+          speak(greetings[lang] || greetings.en, () => {
+            // Only start listening if still open, with a small delay to avoid self-triggering
+            if (isComponentOpen.current) {
+              setTimeout(() => { if (isComponentOpen.current) startListening(); }, 500);
+            }
+          }, ttsLangs[lang] || "en-US");
+        }
+      }, 400);
+
+      return () => {
+        clearTimeout(timer);
+        stopListening();
+        stopAllSpeech();
+      };
+    } else {
+      // Cleanup on close
+      stopListening();
+      stopAllSpeech();
+      hasGreetedRef.current = false;
+    }
+  }, [isOpen, startListening, stopListening]);
+
+// Track open state in a ref for use in async callbacks
+const isComponentOpen = useRef(isOpen);
+useEffect(() => {
+isComponentOpen.current = isOpen;
+if (!isOpen) {
+  stopListening();
+  stopAllSpeech();
+}
+}, [isOpen, stopListening]);
+
+  // ESC to close
+  useEffect(() => {
+    if (!isOpen) return;
+    const handleKey = (e) => {
+      if (e.key === "Escape") handleClose();
+    };
+    window.addEventListener("keydown", handleKey);
+    return () => window.removeEventListener("keydown", handleKey);
+  }, [isOpen, handleClose]);
+
+  // Scroll response into view
+  useEffect(() => {
+    if (response) {
+      responseRef.current?.scrollTo({ top: 0, behavior: "smooth" });
+    }
+  }, [response]);
+
+  // ── Toggle voice ──
+  const toggleListening = () => {
+    unlockAudio();
+    stopAllSpeech(); // Stop any ongoing speech when user wants to talk
+    if (listening) {
+      stopListening();
+    } else {
+      startListening();
+    }
   };
 
   const handleSubmit = (e) => {

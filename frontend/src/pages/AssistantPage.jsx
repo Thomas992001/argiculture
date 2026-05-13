@@ -385,12 +385,13 @@ export default function AssistantPage() {
     return () => {
       window.removeEventListener("twin_lang_changed", handleLangChange);
       stopAllSpeech();
+      window.dispatchEvent(new Event("resume_wake_word"));
     };
   }, [stopAllSpeech]);
 
-  const speakText = useCallback((text) => {
-    if (!text) return;
-    if (!ttsEnabledRef.current) return;
+  const speakText = useCallback((text, onEnd) => {
+    if (!text) { onEnd?.(); return; }
+    if (!ttsEnabledRef.current) { onEnd?.(); return; }
     const selected = LANGUAGES.find((l) => l.code === voiceLang);
     const langCode = selected ? selected.ttsLang : "en-US";
 
@@ -406,18 +407,18 @@ export default function AssistantPage() {
         .slice(0, 500);
       api.cloudTTS(clean, "ta")
         .then((audioUrl) => {
-          if (!ttsEnabledRef.current) { URL.revokeObjectURL(audioUrl); return; }
+          if (!ttsEnabledRef.current) { URL.revokeObjectURL(audioUrl); onEnd?.(); return; }
           const audio = new Audio(audioUrl);
           cloudAudioRef.current = audio;
-          audio.onended = () => { URL.revokeObjectURL(audioUrl); cloudAudioRef.current = null; };
-          audio.onerror = () => { URL.revokeObjectURL(audioUrl); cloudAudioRef.current = null; };
-          audio.play().catch(() => {});
+          audio.onended = () => { URL.revokeObjectURL(audioUrl); cloudAudioRef.current = null; onEnd?.(); };
+          audio.onerror = () => { URL.revokeObjectURL(audioUrl); cloudAudioRef.current = null; onEnd?.(); };
+          audio.play().catch(() => { onEnd?.(); });
         })
-        .catch((e) => console.warn("Cloud TTS failed:", e));
+        .catch((e) => { console.warn("Cloud TTS failed:", e); onEnd?.(); });
       return;
     }
 
-    if (!window.speechSynthesis) return;
+    if (!window.speechSynthesis) { onEnd?.(); return; }
     const plain = String(text)
       .replace(/\*\*(.+?)\*\*/g, "$1")
       .replace(/\*(.+?)\*/g, "$1")
@@ -453,6 +454,10 @@ export default function AssistantPage() {
       }
     }
 
+    if (onEnd) {
+      utterance.onend = () => onEnd();
+      utterance.onerror = () => onEnd();
+    }
     window.speechSynthesis.speak(utterance);
   }, [voiceLang, stopAllSpeech]);
 
@@ -471,13 +476,30 @@ export default function AssistantPage() {
       const transcript = event.results[0]?.[0]?.transcript?.trim();
       if (transcript) {
         const lower = transcript.toLowerCase();
+        
+        // Hands-free confirmation/rejection of proposed actions
+        const activeActionMsg = messages.slice().reverse().find(m => m.actions_proposed?.length > 0 && m.action_id);
+        if (activeActionMsg) {
+          const confirmWords = ["yes", "confirm", "ok", "sure", "确认", "ya", "ya betul", "ஆமாம்", "சரி"];
+          const rejectWords = ["no", "reject", "cancel", "decline", "拒绝", "tak", "jangan", "இல்லை", "வேண்டாம்"];
+          if (confirmWords.some(w => lower.includes(w))) {
+            handleConfirmAction(activeActionMsg.action_id);
+            setInput("");
+            return;
+          } else if (rejectWords.some(w => lower.includes(w))) {
+            handleRejectAction(activeActionMsg.action_id);
+            setInput("");
+            return;
+          }
+        }
+
         const activeLang = voiceLang || "en";
         const triggers = WAKE_WORDS_MAP[activeLang] || WAKE_WORDS_MAP.en;
         
         if (triggers.some((t) => lower.includes(t))) {
           handleHelloTwin(activeLang);
         } else {
-          setInput(transcript);
+          setInput("");
           handleSend(transcript);
         }
       }
@@ -485,20 +507,24 @@ export default function AssistantPage() {
     recog.onerror = (event) => {
       console.warn("Speech recognition error:", event.error);
       setIsListening(false);
+      window.dispatchEvent(new Event("resume_wake_word"));
     };
-    recog.onend = () => setIsListening(false);
+    recog.onend = () => { setIsListening(false); window.dispatchEvent(new Event("resume_wake_word")); };
 
     recognitionRef.current = recog;
     try {
+      window.dispatchEvent(new Event("pause_wake_word"));
       recog.start();
     } catch (e) {
       setIsListening(false);
+      window.dispatchEvent(new Event("resume_wake_word"));
     }
-  }, [voiceLang, speechSupported]);
+  }, [voiceLang, speechSupported, messages]);
 
   const stopListening = useCallback(() => {
     try { recognitionRef.current?.stop(); } catch (e) {}
     setIsListening(false);
+    window.dispatchEvent(new Event("resume_wake_word"));
   }, []);
 
   useEffect(() => {
@@ -554,6 +580,11 @@ export default function AssistantPage() {
         actions_proposed: response.actions_proposed, action_id: response.action_id,
         related_videos: response.related_videos,
       });
+      speakText(response.answer, () => {
+        if (response.actions_proposed && response.actions_proposed.length > 0) {
+          startListening();
+        }
+      });
     } catch {
       const selected = LANGUAGES.find((l) => l.code === (voiceLang || "en")) || LANGUAGES[0];
       addBotMessage(selected.ui.errSomething);
@@ -576,6 +607,9 @@ export default function AssistantPage() {
           actions_taken: response.actions_taken, actions_proposed: [],
         }];
       });
+      speakText(response.answer, () => {
+        startListening();
+      });
     } catch {
       addBotMessage("Failed to confirm action. Please try again.");
     } finally {
@@ -592,6 +626,9 @@ export default function AssistantPage() {
       return [...updated, {
         id: Date.now() + Math.random(), text: activeLang.cancelled, isUser: false, intent: "cancelled",
       }];
+    });
+    speakText(activeLang.cancelled, () => {
+      startListening();
     });
   };
 

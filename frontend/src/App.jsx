@@ -32,6 +32,7 @@ export default function App() {
   const location = useLocation();
   const [loading, setLoading] = useState(true);
   const [heyTwinOpen, setHeyTwinOpen] = useState(false);
+  const [wakeWordPaused, setWakeWordPaused] = useState(false);
   const [twinLang, setTwinLang] = useState(() => localStorage.getItem("twin_lang"));
   const wakeRecogRef = useRef(null);
 
@@ -78,14 +79,27 @@ export default function App() {
 
   useEffect(() => {
     const handleLangChange = () => setTwinLang(localStorage.getItem("twin_lang"));
+    const handlePause = () => setWakeWordPaused(true);
+    const handleResume = () => setWakeWordPaused(false);
+
     window.addEventListener("twin_lang_changed", handleLangChange);
-    return () => window.removeEventListener("twin_lang_changed", handleLangChange);
+    window.addEventListener("pause_wake_word", handlePause);
+    window.addEventListener("resume_wake_word", handleResume);
+
+    return () => {
+      window.removeEventListener("twin_lang_changed", handleLangChange);
+      window.removeEventListener("pause_wake_word", handlePause);
+      window.removeEventListener("resume_wake_word", handleResume);
+    };
   }, []);
 
   // ── Continuous wake word detection (background listening) ──
-  // Pauses automatically while HeyTwinDialog is open to avoid mic conflicts.
+  // Pauses automatically while HeyTwinDialog is open or manually paused to avoid mic conflicts.
   useEffect(() => {
-    if (!isAuthenticated || heyTwinOpen) return;
+    if (!isAuthenticated || heyTwinOpen || wakeWordPaused) {
+      try { wakeRecogRef.current?.stop(); } catch {}
+      return;
+    }
 
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
     if (!SpeechRecognition) return;
@@ -155,7 +169,7 @@ export default function App() {
         }
       } catch {}
     };
-  }, [isAuthenticated, heyTwinOpen, twinLang]);
+  }, [isAuthenticated, heyTwinOpen, twinLang, wakeWordPaused]);
 
   const handleLogout = async () => {
     try {

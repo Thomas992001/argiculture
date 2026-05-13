@@ -104,6 +104,8 @@ Parse the user's natural language message into a structured JSON response.
 - Simple single-pump on/off: set requires_confirmation=false
 - Multiple pumps at once: set requires_confirmation=true
 - "浇水" / "water" without specifying a bed means ALL pumps → requires_confirmation=true
+- Duration Extraction: If the user explicitly specifies a duration (e.g., 'for 30 seconds', '持续三十秒'), set duration_seconds to that value. Otherwise, default to 60.
+- "传感器" or "电源" (Sensor/Power) refers to all actuators starting with 'sensor_'. If the user says "关闭所有传感器", you must generate actions for each 'sensor_xxx' actuator.
 
 ## For emergency_stop intent:
 - Always set requires_confirmation=false (safety first)
@@ -437,8 +439,8 @@ class AgentExecutor:
                 taken.append(action_record)
                 self._log_action("execute", actuator_id, action, f"OK: {command.value}")
 
-                # Set auto-off timer for ON commands (Only for PUMPS)
-                if command == ActuatorState.ON and duration and result.type == "pump":
+                # Set auto-off timer for ON commands (Allow for ALL actuators if duration exists)
+                if command == ActuatorState.ON and duration:
                     self._schedule_auto_off(actuator_id, duration)
             else:
                 taken.append({
@@ -624,8 +626,10 @@ class AgentExecutor:
 
     # ── Helpers ──
 
-    def _safe_parse_json(self, text: str) -> Optional[dict]:
+    def _safe_parse_json(self, text: Optional[str]) -> Optional[dict]:
         """Attempt to parse JSON from Gemini response, handling edge cases."""
+        if text is None:
+            return None
         text = text.strip()
         # Remove markdown code fences if present
         if text.startswith("```"):

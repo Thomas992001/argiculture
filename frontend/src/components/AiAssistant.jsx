@@ -331,7 +331,10 @@ export default function AiAssistant({ onOpenHeyTwin }) {
 
   // Stop speech if component unmounts
   useEffect(() => {
-    return () => stopAllSpeech();
+    return () => {
+      stopAllSpeech();
+      window.dispatchEvent(new Event("resume_wake_word"));
+    };
   }, []);
 
   // Set up Web Speech API recognition. Reconfigured when language changes.
@@ -350,7 +353,23 @@ export default function AiAssistant({ onOpenHeyTwin }) {
       const transcript = event.results[0]?.[0]?.transcript?.trim();
       if (transcript) {
         const lower = transcript.toLowerCase();
-        // Check for Hello Twin trigger in voice input
+        
+        // Hands-free confirmation/rejection
+        const activeActionMsg = messages.slice().reverse().find(m => m.actions_proposed?.length > 0 && m.action_id);
+        if (activeActionMsg) {
+          const confirmWords = ["yes", "confirm", "ok", "sure", "确认", "ya", "ya betul", "ஆமாம்", "சரி"];
+          const rejectWords = ["no", "reject", "cancel", "decline", "拒绝", "tak", "jangan", "இல்லை", "வேண்டாம்"];
+          if (confirmWords.some(w => lower.includes(w))) {
+            handleConfirm(activeActionMsg.action_id);
+            setInput("");
+            return;
+          } else if (rejectWords.some(w => lower.includes(w))) {
+            handleReject(activeActionMsg.action_id);
+            setInput("");
+            return;
+          }
+        }
+
         const triggers = WAKE_WORDS_MAP[language] || WAKE_WORDS_MAP.en;
         if (triggers.some((trigger) => lower.includes(trigger))) {
           triggerHelloTwin(language);
@@ -360,12 +379,19 @@ export default function AiAssistant({ onOpenHeyTwin }) {
         }
       }
     };
-    recog.onerror = () => setListening(false);
-    recog.onend = () => setListening(false);
+    recog.onerror = () => {
+      setListening(false);
+      window.dispatchEvent(new Event("resume_wake_word"));
+    };
+    recog.onend = () => {
+      setListening(false);
+      window.dispatchEvent(new Event("resume_wake_word"));
+    };
 
     recognitionRef.current = recog;
     return () => {
       try { recog.abort(); } catch {}
+      window.dispatchEvent(new Event("resume_wake_word"));
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [language]);
@@ -379,13 +405,16 @@ export default function AiAssistant({ onOpenHeyTwin }) {
     if (listening) {
       try { recog.stop(); } catch {}
       setListening(false);
+      window.dispatchEvent(new Event("resume_wake_word"));
     } else {
       try {
+        window.dispatchEvent(new Event("pause_wake_word"));
         recog.start();
         setListening(true);
       } catch (e) {
         console.warn("Speech start error:", e);
         setListening(false);
+        window.dispatchEvent(new Event("resume_wake_word"));
       }
     }
   };
@@ -412,7 +441,11 @@ export default function AiAssistant({ onOpenHeyTwin }) {
         action_id: response.action_id,
         related_videos: response.related_videos,
       }]);
-      speakResponse(response.answer);
+      speakResponse(response.answer, () => {
+        if (response.actions_proposed && response.actions_proposed.length > 0) {
+          toggleListening();
+        }
+      });
     } catch {
       setMessages((prev) => [...prev, {
         id: Date.now() + 1, text: t.error, isUser: false,
@@ -449,7 +482,11 @@ export default function AiAssistant({ onOpenHeyTwin }) {
         action_id: response.action_id,
         related_videos: response.related_videos,
       }]);
-      speakResponse(response.answer);
+      speakResponse(response.answer, () => {
+        if (response.actions_proposed && response.actions_proposed.length > 0) {
+          toggleListening();
+        }
+      });
     } catch {
       setMessages((prev) => [...prev, {
         id: Date.now() + 1, text: t.error, isUser: false,
@@ -482,6 +519,9 @@ export default function AiAssistant({ onOpenHeyTwin }) {
           actions_proposed: [],
         }];
       });
+      speakResponse(response.answer, () => {
+        toggleListening(); // Re-open mic
+      });
     } catch {
       setMessages((prev) => [...prev, {
         id: Date.now(), text: "Failed to confirm action. Please try again.", isUser: false,
@@ -506,11 +546,14 @@ export default function AiAssistant({ onOpenHeyTwin }) {
         intent: "cancelled",
       }];
     });
+    speakResponse(t.cancelled, () => {
+      toggleListening();
+    });
   };
 
-  const speakResponse = (text) => {
-    if (!text) return;
-    if (!ttsEnabledRef.current) return;
+  const speakResponse = (text, onEnd) => {
+    if (!text) { onEnd?.(); return; }
+    if (!ttsEnabledRef.current) { onEnd?.(); return; }
 
     // Always interrupt any ongoing speech before starting new one
     stopAllSpeech();
@@ -524,18 +567,18 @@ export default function AiAssistant({ onOpenHeyTwin }) {
         .slice(0, 500);
       api.cloudTTS(clean, "ta")
         .then((audioUrl) => {
-          if (!ttsEnabledRef.current) { URL.revokeObjectURL(audioUrl); return; }
+          if (!ttsEnabledRef.current) { URL.revokeObjectURL(audioUrl); onEnd?.(); return; }
           const audio = new Audio(audioUrl);
           cloudAudioRef.current = audio;
-          audio.onended = () => { URL.revokeObjectURL(audioUrl); cloudAudioRef.current = null; };
-          audio.onerror = () => { URL.revokeObjectURL(audioUrl); cloudAudioRef.current = null; };
-          audio.play().catch(() => {});
+          audio.onended = () => { URL.revokeObjectURL(audioUrl); cloudAudioRef.current = null; onEnd?.(); };
+          audio.onerror = () => { URL.revokeObjectURL(audioUrl); cloudAudioRef.current = null; onEnd?.(); };
+          audio.play().catch(() => { onEnd?.(); });
         })
-        .catch((e) => console.warn("Cloud TTS failed:", e));
+        .catch((e) => { console.warn("Cloud TTS failed:", e); onEnd?.(); });
       return;
     }
 
-    if (!("speechSynthesis" in window)) return;
+    if (!("speechSynthesis" in window)) { onEnd?.(); return; }
     try {
       const clean = text
         .replace(/[#*`_>~]/g, "")
@@ -566,9 +609,14 @@ export default function AiAssistant({ onOpenHeyTwin }) {
         }
       }
 
+      if (onEnd) {
+        utter.onend = () => onEnd();
+        utter.onerror = () => onEnd();
+      }
       window.speechSynthesis.speak(utter);
     } catch (e) {
       console.warn("TTS error:", e);
+      onEnd?.();
     }
   };
 
