@@ -45,7 +45,7 @@ class Settings(BaseSettings):
     # Firebase Admin SDK
     firebase_credentials: Optional[str] = Field(None, alias="FIREBASE_CREDENTIALS")
     firebase_database_url: str = "https://agritwin-mrv-default-rtdb.firebaseio.com/"
-    firebase_target_uid: str = "ZLwjf4x1vBPkcEHc015OhelwwHo1"
+    firebase_target_uid: Optional[str] = Field(None, alias="FIREBASE_TARGET_UID")
 
     model_config = {
         "env_file": ".env",

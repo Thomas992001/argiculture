@@ -94,10 +94,10 @@ export const api = {
     }),
   forecastSoilConditions: (horizonHours = 4) =>
     fetchJSON(`/advisor/forecast-soil?horizon_hours=${horizonHours}`),
-  bindSimulator: (uid) =>
+  bindSimulator: (token) =>
     fetchJSON("/simulator/bind", {
       method: "POST",
-      body: JSON.stringify({ uid }),
+      body: JSON.stringify({ idToken: token }),
     }),
 
   // Agentic AI

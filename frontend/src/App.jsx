@@ -40,9 +40,11 @@ export default function App() {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
       setIsAuthenticated(!!user);
       if (user) {
-        api.bindSimulator(user.uid)
-          .then(() => console.log("Backend bound to UID:", user.uid))
-          .catch(err => console.error("Binding error:", err));
+        user.getIdToken().then((token) => {
+          api.bindSimulator(token)
+            .then(() => console.log("Backend securely bound via ID Token"))
+            .catch(err => console.error("Binding error:", err));
+        });
 
         // Fetch user's preferred language from Firestore
         getDoc(doc(db, "users", user.uid)).then((docSnap) => {

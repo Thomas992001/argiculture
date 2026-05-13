@@ -13,6 +13,7 @@ from typing import List, Set
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+from firebase_admin import auth as firebase_auth
 
 from backend.config import settings
 from backend.database import tsdb
@@ -161,7 +162,23 @@ app.include_router(advisor.router)
 @app.post("/api/simulator/bind")
 async def bind_simulator(data: dict):
     """Link the local simulator to a specific Firebase UID and start cloud listeners."""
-    uid = data.get("uid")
+    # Priority 1: Use idToken if provided (Secure)
+    id_token = data.get("idToken")
+    uid = None
+    
+    if id_token:
+        try:
+            decoded_token = firebase_auth.verify_id_token(id_token)
+            uid = decoded_token['uid']
+            print(f"[Bind] Verified user {uid} via ID Token")
+        except Exception as e:
+            print(f"[Bind] Token verification failed: {e}")
+            return {"status": "error", "message": "Invalid authentication token"}
+    
+    # Priority 2: Fallback to explicit uid (For legacy or specific dev cases)
+    if not uid:
+        uid = data.get("uid")
+
     if uid:
         tsdb.set_active_uid(uid)
         
@@ -176,7 +193,7 @@ async def bind_simulator(data: dict):
         twin_state.push_actuators_to_cloud(uid)
         
         return {"status": "bound", "uid": uid}
-    return {"status": "error", "message": "No UID provided"}
+    return {"status": "error", "message": "No UID or Token provided"}
 
 
 @app.get("/api/status", response_model=SystemStatus)
