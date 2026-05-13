@@ -19,6 +19,8 @@ import {
   Activity,
   Volume2,
   VolumeX,
+  Play,
+  ExternalLink,
 } from "lucide-react";
 import { auth, db } from "../firebase";
 import { doc, setDoc } from "firebase/firestore";
@@ -231,6 +233,58 @@ function ActionsProposedCard({ actions, actionId, onConfirm, onReject, confirmin
   );
 }
 
+function VideoCardsSection({ videos }) {
+  if (!videos || videos.length === 0) return null;
+  return (
+    <div className="mt-2.5 space-y-1.5">
+      <div className="flex items-center gap-1.5 text-[10px] text-purple-400 font-medium uppercase tracking-wider">
+        <Play size={10} />
+        Related Videos
+      </div>
+      <div className="flex gap-2 overflow-x-auto pb-1 -mx-1 px-1 scrollbar-thin">
+        {videos.map((v, i) => (
+          <a
+            key={v.video_id || i}
+            href={v.url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex-shrink-0 w-[180px] group rounded-lg bg-gray-900/80 border border-gray-700/50 hover:border-purple-500/50 transition-all overflow-hidden hover:shadow-lg hover:shadow-purple-500/10"
+          >
+            <div className="relative w-full h-[100px] bg-gray-800 overflow-hidden">
+              {v.thumbnail ? (
+                <img
+                  src={v.thumbnail}
+                  alt={v.title}
+                  className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                  loading="lazy"
+                />
+              ) : (
+                <div className="w-full h-full flex items-center justify-center text-gray-600">
+                  <Play size={24} />
+                </div>
+              )}
+              <div className="absolute inset-0 bg-black/20 group-hover:bg-black/10 transition-colors flex items-center justify-center opacity-0 group-hover:opacity-100">
+                <div className="w-8 h-8 rounded-full bg-red-600/90 flex items-center justify-center shadow-lg">
+                  <Play size={14} className="text-white ml-0.5" />
+                </div>
+              </div>
+            </div>
+            <div className="p-2">
+              <p className="text-[11px] text-gray-200 font-medium line-clamp-2 leading-tight group-hover:text-white transition-colors">
+                {v.title}
+              </p>
+              <div className="flex items-center gap-1 mt-1">
+                <span className="text-[9px] text-gray-500 truncate">{v.channel}</span>
+                <ExternalLink size={8} className="text-gray-600 shrink-0" />
+              </div>
+            </div>
+          </a>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export default function AiAssistant({ onOpenHeyTwin }) {
   const [isOpen, setIsOpen] = useState(false);
   const [messages, setMessages] = useState([]);
@@ -356,6 +410,7 @@ export default function AiAssistant({ onOpenHeyTwin }) {
         actions_taken: response.actions_taken,
         actions_proposed: response.actions_proposed,
         action_id: response.action_id,
+        related_videos: response.related_videos,
       }]);
       speakResponse(response.answer);
     } catch {
@@ -392,6 +447,7 @@ export default function AiAssistant({ onOpenHeyTwin }) {
         actions_taken: response.actions_taken,
         actions_proposed: response.actions_proposed,
         action_id: response.action_id,
+        related_videos: response.related_videos,
       }]);
       speakResponse(response.answer);
     } catch {
@@ -694,6 +750,7 @@ export default function AiAssistant({ onOpenHeyTwin }) {
                           t={t}
                         />
                       )}
+                      <VideoCardsSection videos={msg.related_videos} />
                     </>
                   )}
                   {msg.powered_by && (

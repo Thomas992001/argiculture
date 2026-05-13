@@ -59,6 +59,7 @@ class AgentChatResponse(BaseModel):
     actions_taken: List[dict] = []
     actions_proposed: List[dict] = []
     action_id: Optional[str] = None
+    related_videos: List[dict] = []
     model: str = ""
     powered_by: str = ""
 
@@ -146,6 +147,7 @@ async def agent_chat(request: AgentChatRequest):
         actions_taken=result.get("actions_taken", []),
         actions_proposed=result.get("actions_proposed", []),
         action_id=result.get("action_id"),
+        related_videos=result.get("related_videos", []),
         model=result.get("model", ""),
         powered_by=result.get("powered_by", ""),
     )
@@ -183,6 +185,18 @@ async def confirm_action(request: ConfirmActionRequest):
 async def get_agent_log(limit: int = Query(50, ge=1, le=200)):
     """Retrieve the AI agent's execution audit log."""
     return {"log": agent_executor.get_execution_log(limit)}
+
+
+@router.get("/search-videos")
+async def search_videos(
+    q: str = Query(..., description="Search query"),
+    language: Optional[str] = Query("en", description="Language code: en, zh, ms, ta"),
+    max_results: int = Query(3, ge=1, le=5),
+):
+    """Search YouTube for related greenhouse/agriculture videos."""
+    from backend.services.youtube_service import youtube_service
+    videos = await youtube_service.search_videos(q, language=language, max_results=max_results)
+    return {"videos": videos, "query": q, "language": language}
 
 
 # ── Creative AI Functions ──

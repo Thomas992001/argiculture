@@ -113,6 +113,8 @@ export const api = {
       body: JSON.stringify({ action_id: actionId, language }),
     }),
   getAgentLog: (limit = 50) => fetchJSON(`/advisor/agent-log?limit=${limit}`),
+  searchVideos: (query, language = "en", maxResults = 3) =>
+    fetchJSON(`/advisor/search-videos?q=${encodeURIComponent(query)}&language=${language}&max_results=${maxResults}`),
 
   // Cloud TTS (for languages without native browser voice support)
   cloudTTS: async (text, language = "ta") => {

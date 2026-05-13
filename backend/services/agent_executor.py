@@ -111,6 +111,26 @@ Parse the user's natural language message into a structured JSON response.
 ## For optimize_environment intent:
 - Always set requires_confirmation=true
 
+## IMPORTANT — Proactive Video Recommendations (video_search_query):
+For EVERY response, you must evaluate whether the user's question would benefit from a YouTube video recommendation. Set video_search_query when:
+- The user is asking about a concept, technique, or topic (e.g. VPD, pH, hydroponics, pest control)
+- The user wants to learn something or asks "how to" questions
+- The user is troubleshooting a problem (e.g. yellow leaves, wilting plants)
+- The user explicitly asks for videos, tutorials, or learning resources
+
+Do NOT set video_search_query when:
+- The user is only controlling actuators (turn on/off pumps)
+- The user is just greeting (hello twin)
+- The user is asking for pure status readings with no learning component
+- The user is doing small talk
+
+When setting video_search_query:
+- Use a SHORT phrase (3-6 words) in the SAME LANGUAGE as the user's message
+- Make it specific to the topic being discussed
+- Example: user asks "什么是VPD" → video_search_query="VPD 温室 种植 教程"
+- Example: user asks "how to manage pH" → video_search_query="greenhouse pH management tutorial"
+- Example: user asks "叶子发黄怎么办" → video_search_query="植物叶子发黄原因解决"
+
 ## Output format (JSON only, no markdown):
 {
   "intent": "control_actuator",
@@ -119,7 +139,8 @@ Parse the user's natural language message into a structured JSON response.
   ],
   "reasoning": "Brief explanation of what was parsed",
   "requires_confirmation": false,
-  "response_text": "A friendly response message to show the user, in the SAME LANGUAGE as the user's message. Use emoji. If executing, confirm what was done. If proposing, explain what will be done."
+  "response_text": "A friendly response message to show the user, in the SAME LANGUAGE as the user's message. Use emoji. If executing, confirm what was done. If proposing, explain what will be done.",
+  "video_search_query": null
 }
 
 For query_status, greeting, general_chat intents: set actions=[] and requires_confirmation=false.
@@ -332,11 +353,15 @@ class AgentExecutor:
                     result = await gemini_advisor.chat(message)
                     answer = result.get("answer", "")
 
+                # Proactively attach related videos if Gemini suggested a search query
+                videos = await self._maybe_search_videos(parsed, language)
+
                 return {
                     "answer": answer,
                     "intent": intent,
                     "actions_taken": [],
                     "actions_proposed": [],
+                    "related_videos": videos,
                     "model": gemini_advisor._active_model,
                     "powered_by": "google_gemini",
                 }
@@ -561,6 +586,41 @@ class AgentExecutor:
         timer.start()
         self._auto_off_timers[actuator_id] = timer
         print(f"[AgentExecutor] Auto-off scheduled: {actuator_id} in {duration_seconds}s")
+
+    # ── Video Search ──
+
+    async def _maybe_search_videos(
+        self, parsed: dict, language: str
+    ) -> list:
+        """
+        Proactively search for related videos if Gemini suggested a video_search_query.
+        Called for all non-action intents to automatically attach helpful videos.
+        """
+        search_query = parsed.get("video_search_query")
+        if not search_query:
+            return []
+
+        from backend.services.youtube_service import youtube_service
+        if not youtube_service.is_available:
+            print("[AgentExecutor] YouTube service not available (no API key)")
+            return []
+
+        lang = language or "en"
+        try:
+            videos = await youtube_service.search_videos(
+                query=search_query,
+                language=lang,
+                max_results=3,
+            )
+            if videos:
+                self._log_action(
+                    "proactive_video", search_query,
+                    {"language": lang}, f"Found {len(videos)} videos"
+                )
+            return videos
+        except Exception as e:
+            print(f"[AgentExecutor] Video search error: {e}")
+            return []
 
     # ── Helpers ──
 

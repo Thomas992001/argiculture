@@ -31,6 +31,9 @@ class Settings(BaseSettings):
     gcp_project_id: Optional[str] = "agritwin-mrv"
     gcp_location: str = "global"
 
+    # YouTube Data API
+    youtube_api_key: Optional[str] = Field(None, alias="YOUTUBE_API_KEY")
+
     # CORS Settings
     cors_origins: list[str] = [
         "http://localhost:5173",
